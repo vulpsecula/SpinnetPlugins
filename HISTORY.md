@@ -83,3 +83,17 @@ and Dzx copyright notice are copied unchanged. It contains no third-party data
 or assets. The accepted public-helper workflow tests move with the package.
 Original helper-budget measurements remain evidence of their original revision;
 onboarding does not claim a new physical sleep, lid, lock or VoiceOver check.
+
+## Spotify onboarding (#96)
+
+Spotify 1.2.0 (`com.spinnet.external.spotify`) is imported from the independent
+#91 proof source `0aa11e8b01739a77338bfcc16049d000f6ebfce7`.
+Its JavaScript and historical manifest fixtures are preserved. The runtime
+manifest moves to stable Plugin API Level 3, retiring its spotify_controls r1
+and external_app_connections r1 declarations. The independent source's MIT
+licence is included in the runtime package, together with a precise NOTICE;
+no third-party data or assets ship. The 18 accepted workflow tests are adapted
+to this repository and stable public test kit; historical evidence at the
+original d19a543 helper revision remains historical evidence. Native UX and
+Automation acceptance from #91 is reused; onboarding does not claim another
+physical Spotify, permission-dialog or VoiceOver acceptance run.
