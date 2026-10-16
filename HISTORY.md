@@ -95,6 +95,13 @@ or assets. The accepted public-helper workflow tests move with the package.
 Original helper-budget measurements remain evidence of their original revision;
 onboarding does not claim a new physical sleep, lid, lock or VoiceOver check.
 
+Homebrew 1.5.0 was imported for Spinnet #98 from independently accepted #93
+commit `f6a9d91c96f12e0d23697f9802f3d29228483978`. All 66 public helper tests
+are retained. Generated JavaScript bytes are unchanged; the manifest promotes
+retired Candidate Contracts to stable Plugin API Level 3. Source, deterministic
+builder and accurate recovery provenance are under `Sources/Homebrew/`; the
+package preserves MIT licensing and explicit runtime-data attribution.
+
 ## Spotify onboarding (#96)
 
 Spotify 1.2.0 (`com.spinnet.external.spotify`) is imported from the independent
