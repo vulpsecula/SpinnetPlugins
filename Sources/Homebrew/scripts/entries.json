@@ -1,0 +1,72 @@
+[
+  [
+    "brew.open",
+    "Homebrew",
+    "installed"
+  ],
+  [
+    "brew.installed",
+    "Show Installed",
+    "installed"
+  ],
+  [
+    "brew.search",
+    "Search Packages",
+    "search"
+  ],
+  [
+    "brew.outdated",
+    "Available Updates",
+    "outdated"
+  ],
+  [
+    "brew.vulnerabilities",
+    "Security Check",
+    "vulnerabilities"
+  ],
+  [
+    "brew.doctor",
+    "Run Doctor",
+    "doctor"
+  ],
+  [
+    "brew.adopt",
+    "Adopt Apps",
+    "adopt"
+  ],
+  [
+    "brew.upgrade",
+    "Review All Upgrades",
+    "outdated"
+  ],
+  [
+    "brew.services",
+    "Manage Services",
+    "services"
+  ],
+  [
+    "brew.taps",
+    "Manage Package Sources",
+    "taps"
+  ],
+  [
+    "brew.services-menu",
+    "Services Menu",
+    "services"
+  ],
+  [
+    "brew.cleanup",
+    "Clean Up",
+    "cleanup"
+  ],
+  [
+    "brew.clear-cache",
+    "Clear Plugin Cache",
+    "cleanup"
+  ],
+  [
+    "brew.autoremove",
+    "Remove Unused Dependencies",
+    "autoremove"
+  ]
+]
