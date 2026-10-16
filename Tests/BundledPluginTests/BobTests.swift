@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import SpinnetCore
+import SpinnetCore
 import SpinnetPluginTestKit
 
 private enum BobPluginFixture {

@@ -1,5 +1,5 @@
 import XCTest
-@testable import SpinnetCore
+import SpinnetCore
 
 /// The Window Position Bundled Plugin positions the focused window through two
 /// structured Host Services, and toggles its full screen through a third.

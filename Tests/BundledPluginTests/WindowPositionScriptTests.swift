@@ -1,5 +1,5 @@
 import XCTest
-@testable import SpinnetCore
+import SpinnetCore
 import SpinnetPluginTestKit
 
 /// Window Position's scripts run in the real helper. Layouts are answered from

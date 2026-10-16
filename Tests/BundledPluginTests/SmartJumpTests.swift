@@ -1,5 +1,5 @@
 import XCTest
-@testable import SpinnetCore
+import SpinnetCore
 import SpinnetPluginTestKit
 
 /// The Smart Jump Bundled Plugin recognises the selected text in its script

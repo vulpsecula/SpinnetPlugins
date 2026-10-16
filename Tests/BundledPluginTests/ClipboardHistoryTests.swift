@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import SpinnetCore
+import SpinnetCore
 import SpinnetPluginTestKit
 
 /// Clipboard History's browser is the one Host Surface: the Host owns the

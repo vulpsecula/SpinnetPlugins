@@ -1,5 +1,5 @@
 import XCTest
-@testable import SpinnetCore
+import SpinnetCore
 import SpinnetPluginTestKit
 
 /// Resize Window and Move Window carry their values on each Action. These
