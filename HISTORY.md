@@ -67,3 +67,13 @@ exact upstream notice alongside it; the repository's MIT licence cannot replace 
 | `4e1105a24a5528fdb0c2088f6c7739c61c446b30` | `9d662f76b216859d0f892871f97fcaf1f87f0869` | feat: add capability-checked host services (#8) |
 | `599e93ce03e798810af43f3b953c87d55998fde7` | `f0bd96fdcd61e95d6790725e0311e8dec0863840` | feat: run fixture JavaScript in per-Plugin helper (#7) |
 | `43a5ef6f0750193ba078abe7819d6fd5b11fd604` | `56b281cbe7e80f9f880d77c84fa07e5ea061d0f1` | feat: implement frontier ticket 12 walking skeleton |
+
+## Keep Awake onboarding (#95)
+
+`Plugins/KeepAwake.spinnetplugin` preserves the independently accepted Keep Awake
+1.0.3 package (`com.spinnet.coffee`), stable Plugin API Level 2, from the external
+Coffee proof's `4a7ab74` source (`18f26d7` records acceptance). Its MIT licence
+and Dzx copyright notice are copied unchanged. It contains no third-party data
+or assets. The accepted public-helper workflow tests move with the package.
+Original helper-budget measurements remain evidence of their original revision;
+onboarding does not claim a new physical sleep, lid, lock or VoiceOver check.
