@@ -1,6 +1,6 @@
 # Spinnet Plugins
 
-The 17 official Plugins shipped with Spinnet, distributed under MIT. Each package
+The official Plugins shipped with Spinnet, distributed under MIT. Each package
 under `Plugins/` is independently installable; Bundled distribution grants no
 extra authority. Emoji remains a proof workload and is not shipped here.
 

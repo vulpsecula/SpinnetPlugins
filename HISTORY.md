@@ -6,6 +6,12 @@ commits retain authors, dates, messages and parent relationships among relevant
 commits. Hashes change because unrelated Host files and commits are excluded.
 The original history remains available in the Host repository.
 
+Current App 2.0.0 was imported for Spinnet #94 from the independently accepted
+`SpinnetProbes/current-app` revision `480903f055eafa128c9f8114f7e7de2587debd2f`.
+Its MIT package and precise NOTICE are unchanged; its public test-kit tests
+are adapted to this repository's shipped package and pinned Host dependency.
+The package uses stable Level 2 and includes no third-party data or assets.
+
 The sole original author approved MIT relicensing in ADR 0014 and issue #66.
 The MIT licence applies to the first-party packages and tests in this repository,
 including their imported history. No third-party notice was removed or replaced:

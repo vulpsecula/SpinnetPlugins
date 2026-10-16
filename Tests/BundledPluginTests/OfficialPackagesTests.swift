@@ -16,9 +16,9 @@ final class OfficialPackagesTests: XCTestCase {
             "com.spinnet.builtin.open-folder", "com.spinnet.builtin.open-url", "com.spinnet.builtin.paste",
             "com.spinnet.builtin.keyboard-shortcut", "com.spinnet.builtin.service", "com.spinnet.builtin.run-shortcut",
             "com.spinnet.builtin.screenshot", "com.spinnet.shottr", "com.spinnet.smart-jump",
-            "com.spinnet.translator", "com.spinnet.window-position"
+            "com.spinnet.translator", "com.spinnet.window-position", "com.spinnet.probe.current-app"
         ])
-        XCTAssertEqual(packages.count, 17)
+        XCTAssertEqual(packages.count, 18)
         for plugin in packages {
             XCTAssertTrue(plugin.manifest.candidateContracts.isEmpty, plugin.manifest.id.rawValue)
             XCTAssertLessThanOrEqual(plugin.manifest.apiLevel, PluginAPILevel.highestSupported)
