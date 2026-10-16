@@ -12,6 +12,17 @@ Its MIT package and precise NOTICE are unchanged; its public test-kit tests
 are adapted to this repository's shipped package and pinned Host dependency.
 The package uses stable Level 2 and includes no third-party data or assets.
 
+System Monitor 1.3.0 was imported for Spinnet #97 from the independently
+accepted #92 source commit `dd12f91314c4a0d74eb7c3db3e4f954050cfa361`.
+The accepted 1.2.0 runtime script and upstream MIT licence are byte-preserved.
+Its manifest now declares stable Plugin API Level 3 instead of provisional
+`adaptive_layout` revision 2, with version 1.3.0 and unchanged identity and scope.
+The 10 public tests were imported with stable promotion/refusal expectations;
+a distribution test checks ordinary grants for both origins. The original
+external SDK/test-kit/helper pin was `251ccfc1d0fc19fade30fe4f1cb81dabad3a7ba4`;
+that historical proof is not a claim that candidate declarations remain supported.
+NOTICE records provenance and the absence of third-party data or asset files.
+
 The sole original author approved MIT relicensing in ADR 0014 and issue #66.
 The MIT licence applies to the first-party packages and tests in this repository,
 including their imported history. No third-party notice was removed or replaced:
@@ -90,3 +101,17 @@ are retained. Generated JavaScript bytes are unchanged; the manifest promotes
 retired Candidate Contracts to stable Plugin API Level 3. Source, deterministic
 builder and accurate recovery provenance are under `Sources/Homebrew/`; the
 package preserves MIT licensing and explicit runtime-data attribution.
+
+## Spotify onboarding (#96)
+
+Spotify 1.2.0 (`com.spinnet.external.spotify`) is imported from the independent
+#91 proof source `0aa11e8b01739a77338bfcc16049d000f6ebfce7`.
+Its JavaScript and historical manifest fixtures are preserved. The runtime
+manifest moves to stable Plugin API Level 3, retiring its spotify_controls r1
+and external_app_connections r1 declarations. The independent source's MIT
+licence is included in the runtime package, together with a precise NOTICE;
+no third-party data or assets ship. The 18 accepted workflow tests are adapted
+to this repository and stable public test kit; historical evidence at the
+original d19a543 helper revision remains historical evidence. Native UX and
+Automation acceptance from #91 is reused; onboarding does not claim another
+physical Spotify, permission-dialog or VoiceOver acceptance run.
