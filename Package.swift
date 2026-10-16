@@ -5,7 +5,7 @@ let package = Package(
     name: "SpinnetPlugins",
     platforms: [.macOS(.v13)],
     dependencies: [
-        .package(url: "https://github.com/vulpsecula/Spinnet.git", revision: "91ff874f5494f4e67548626b93e81f24e9dfb4cd")
+        .package(url: "https://github.com/vulpsecula/Spinnet.git", revision: "7866233772deb029f15cdfa68f885e300b6a320a")
     ],
     targets: [
         .testTarget(name: "BundledPluginTests", dependencies: [
