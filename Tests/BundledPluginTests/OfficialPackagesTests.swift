@@ -17,9 +17,9 @@ final class OfficialPackagesTests: XCTestCase {
             "com.spinnet.builtin.keyboard-shortcut", "com.spinnet.builtin.service", "com.spinnet.builtin.run-shortcut",
             "com.spinnet.builtin.screenshot", "com.spinnet.shottr", "com.spinnet.smart-jump",
             "com.spinnet.translator", "com.spinnet.window-position", "com.spinnet.coffee",
-            "com.spinnet.probe.current-app", "com.spinnet.external.spotify"
+            "com.spinnet.probe.current-app", "com.spinnet.external.spotify", "com.spinnet.system-monitor"
         ])
-        XCTAssertEqual(packages.count, 20)
+        XCTAssertEqual(packages.count, 21)
         for plugin in packages {
             XCTAssertTrue(plugin.manifest.candidateContracts.isEmpty, plugin.manifest.id.rawValue)
             XCTAssertLessThanOrEqual(plugin.manifest.apiLevel, PluginAPILevel.highestSupported)
