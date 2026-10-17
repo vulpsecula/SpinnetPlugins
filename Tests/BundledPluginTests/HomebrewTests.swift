@@ -6,7 +6,7 @@ import SpinnetPluginTestKit
 
 final class HomebrewTests: XCTestCase {
     private func plugin() throws -> PluginUnderTest { try PluginUnderTest(named: "Homebrew.spinnetplugin", origin: .bundled) }
-    private func render(_ helper: PluginTestHelper, command: String = "brew.open", input: JSONValue = .null,
+    private func render(_ helper: PluginTestHelper, command: String = "brew.installed", input: JSONValue = .null,
                         event: PluginViewEvent? = nil, state: JSONValue = .null, activities: [JSONValue] = []) throws -> PluginScriptAnswer {
         let services = RecordedHostServices(operations: ["activities.list": .value(.array(activities))])
         let run = helper.run(.init(command, input: input, event: event, state: state), of: try plugin(), answering: services)
@@ -24,7 +24,7 @@ final class HomebrewTests: XCTestCase {
     func testEveryShortcutShowsLiteralOutputWithoutOpeningTerminalOrStartingWork() throws {
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
         let plugin = try plugin()
-        XCTAssertEqual(plugin.manifest.version, "2.2.0")
+        XCTAssertEqual(plugin.manifest.version, "2.3.0")
         XCTAssertEqual(plugin.manifest.apiLevel, 6)
         XCTAssertEqual(Set(plugin.manifest.capabilities), [.readReviewedTools, .runReviewedToolTasks])
         XCTAssertNil(plugin.manifest.scope(for: .controlExternalApp))
@@ -40,14 +40,14 @@ final class HomebrewTests: XCTestCase {
     }
     func testReadRunsOnceAndShowsNativeTextAndTheRealExitStatusInsideThePage() throws {
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
-        let opened = try render(helper, command: "brew.version")
-        let run = try render(helper, command: "brew.version", event: press(), state: opened.state)
+        let opened = try render(helper, command: "brew.doctor")
+        let run = try render(helper, command: "brew.doctor", event: press(), state: opened.state)
         XCTAssertNil(run.operation)
         let source = try XCTUnwrap(run.page?.sources.first)
-        XCTAssertEqual(source.input, .object(["tool": .string("homebrew"), "operation": .string("commandOutput"), "command": .string("version")]))
+        XCTAssertEqual(source.input, .object(["tool": .string("homebrew"), "operation": .string("commandOutput"), "command": .string("doctor")]))
         let raw = "Homebrew native output\n**literal** [not a link](https://example.com)\n  Warning: diagnostic"
         let result: JSONValue = .object(["output": .string(raw), "exit_status": .number(1), "output_truncated": .bool(false)])
-        let finished = try render(helper, command: "brew.version", event: .sourceDelivered(page: "homebrew-command", source: source.id, sequence: 1, result: result, failure: nil), state: run.state)
+        let finished = try render(helper, command: "brew.doctor", event: .sourceDelivered(page: "homebrew-command", source: source.id, sequence: 1, result: result, failure: nil), state: run.state)
         XCTAssertEqual(try output(finished), raw)
         XCTAssertNil(finished.operation); XCTAssertTrue(finished.page?.sources.isEmpty == true)
         guard case .text(let status)? = finished.page?.component("command-status") else { return XCTFail("Native exit status is required") }
@@ -89,8 +89,8 @@ final class HomebrewTests: XCTestCase {
     }
     func testCancelReadRemovesTheSourceAndLateResultsCannotReplaceOutput() throws {
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
-        let opened = try render(helper, command: "brew.version")
-        let run = try render(helper, command: "brew.version", event: press(), state: opened.state)
+        let opened = try render(helper, command: "brew.doctor")
+        let run = try render(helper, command: "brew.doctor", event: press(), state: opened.state)
         let source = try XCTUnwrap(run.page?.sources.first)
         let cancelled = try render(helper, event: press("cancel-read"), state: run.state)
         XCTAssertNil(cancelled.operation); XCTAssertTrue(cancelled.page?.sources.isEmpty == true)
@@ -100,7 +100,7 @@ final class HomebrewTests: XCTestCase {
     func testInvalidInputAndSourceDeliveriesNeverStartAMutation() throws {
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
         for package in ["", "foo; touch /tmp/should-not-run", "--force", "x\ny"] {
-            let opened = try render(helper, command: "brew.install", input: .object(["package": .string(package)]))
+            let opened = try render(helper, command: "brew.search", state: .object(["command": .string("install"), "section": .string("search"), "package": .string(package)]))
             XCTAssertNotNil(opened.page?.component("input-help")); XCTAssertNil(opened.page?.component("execute"))
             XCTAssertNil(try render(helper, event: press(), state: opened.state).operation)
         }
@@ -126,26 +126,32 @@ final class HomebrewTests: XCTestCase {
     }
     func testLargeUnicodeOutputStaysWithinStateBudgetAndDisclosesTruncation() throws {
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
-        let opened = try render(helper, command: "brew.version")
+        let opened = try render(helper, command: "brew.doctor")
         let run = try render(helper, event: press(), state: opened.state)
         let source = try XCTUnwrap(run.page?.sources.first)
         let finished = try render(helper, event: .sourceDelivered(page: "homebrew-command", source: source.id, sequence: 1, result: .object(["output": .string(String(repeating: "下载🙂\n", count: 10000)), "exit_status": .number(0)]), failure: nil), state: run.state)
         XCTAssertLessThanOrEqual(try JSONEncoder().encode(finished.state).count, ScriptedActionBudgets.viewStateBytes)
         XCTAssertNotNil(finished.page?.component("output-limit"))
     }
-    func testLegacyMenuCommandsRemainPresentWithExplicitRetirementGuidance() throws {
-        let helper = try PluginTestHelper(); defer { helper.shutdown() }
-        for command in ["brew.vulnerabilities", "brew.clear-cache"] {
-            let opened = try render(helper, command: command)
-            XCTAssertNotNil(opened.page?.component("legacy-command")); XCTAssertNil(opened.operation)
+    func testOnlyCoreEntrypointsShipAndAllRetiredBindingsHaveMigrations() throws {
+        let manifest = try plugin().manifest
+        let ids = Set(manifest.commands.map(\.id.rawValue))
+        XCTAssertEqual(ids, ["brew.installed", "brew.search", "brew.outdated", "brew.upgrade", "brew.update", "brew.adopt", "brew.services", "brew.taps", "brew.doctor", "brew.cleanup"])
+        let retired = ["brew.open", "brew.vulnerabilities", "brew.services-menu", "brew.clear-cache", "brew.autoremove", "brew.install", "brew.uninstall", "brew.info", "brew.config", "brew.version", "brew.untap"]
+        for id in retired {
+            let target = try XCTUnwrap(manifest.migrations.renamedCommands[CommandID(id)])
+            XCTAssertTrue(ids.contains(target.rawValue))
         }
-        let ids = Set(try plugin().manifest.commands.map(\.id.rawValue))
-        XCTAssertTrue(ids.isSuperset(of: ["brew.open","brew.installed","brew.search","brew.outdated","brew.vulnerabilities","brew.doctor","brew.adopt","brew.upgrade","brew.services","brew.taps","brew.services-menu","brew.cleanup","brew.clear-cache","brew.autoremove"]))
+        let scripts = try FileManager.default.contentsOfDirectory(at: try plugin().package.rootURL, includingPropertiesForKeys: nil).filter { $0.pathExtension == "js" }
+        XCTAssertEqual(scripts.count, 10, "Retired generated scripts must also leave the shipped package")
     }
 
-    private func readResult(_ helper: PluginTestHelper, command: String = "brew.open", text: String,
-                            exit: Int = 0, truncated: Bool = false) throws -> PluginScriptAnswer {
-        let opened = try render(helper, command: command)
+    private func readResult(_ helper: PluginTestHelper, command: String = "brew.installed", text: String,
+                            exit: Int = 0, truncated: Bool = false, report: String? = nil) throws -> PluginScriptAnswer {
+        var opened = try render(helper, command: command)
+        if let report {
+            opened = try render(helper, command: command, event: .pageFieldChanged(page: "homebrew-command", field: "report", values: .object(["report": .string(report)])), state: opened.state)
+        }
         let run = try render(helper, command: command, event: press(), state: opened.state)
         let source = try XCTUnwrap(run.page?.sources.first)
         return try render(helper, command: command, event: .sourceDelivered(page: "homebrew-command", source: source.id, sequence: 1,
@@ -185,7 +191,7 @@ final class HomebrewTests: XCTestCase {
     }
     func testConfigurationServicesAndTapsUseListsAndKeepDetails() throws {
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
-        let config = try readResult(helper, command: "brew.config", text: "HOMEBREW_VERSION: 5.0.0\nCPU: 10-core 64-bit arm64\nmacOS: 26.0-arm64\n")
+        let config = try readResult(helper, command: "brew.doctor", text: "HOMEBREW_VERSION: 5.0.0\nCPU: 10-core 64-bit arm64\nmacOS: 26.0-arm64\n", report: "config")
         XCTAssertEqual(config.page?.collection?.items.map(\.title), ["HOMEBREW_VERSION", "CPU", "macOS"])
         XCTAssertEqual(config.page?.collection?.items[1].subtitle, "10-core 64-bit arm64")
         let services = try readResult(helper, command: "brew.services", text: "Name Status User File\nredis started zeke ~/Library/LaunchAgents/homebrew.mxcl.redis.plist\npostgresql@17 none\nmysql error 256 zeke ~/Library/LaunchAgents/mysql.plist\n")
@@ -197,11 +203,11 @@ final class HomebrewTests: XCTestCase {
     func testDiagnosticsUnknownFormatsAndPartialReadsAlwaysRemainLiteral() throws {
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
         for (command, text, exit, truncated) in [
-            ("brew.open", "wget\nWarning: preserve this diagnostic", 0, false),
-            ("brew.open", "/opt/homebrew/Cellar/wget/1.25/bin/wget", 0, false),
-            ("brew.open", "wget\n", 1, false),
-            ("brew.open", "wget\n", 0, true),
-            ("brew.config", "CPU: arm64\n  continued native detail", 0, false),
+            ("brew.installed", "wget\nWarning: preserve this diagnostic", 0, false),
+            ("brew.installed", "/opt/homebrew/Cellar/wget/1.25/bin/wget", 0, false),
+            ("brew.installed", "wget\n", 1, false),
+            ("brew.installed", "wget\n", 0, true),
+            ("brew.doctor", "CPU: arm64\n  continued native detail", 0, false),
             ("brew.services", "Name Status User File\nredis unexpected-status", 0, false)
         ] {
             let result = try readResult(helper, command: command, text: text, exit: exit, truncated: truncated)
@@ -211,7 +217,7 @@ final class HomebrewTests: XCTestCase {
     func testChangingNextCommandDoesNotReinterpretPreviousResults() throws {
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
         let result = try readResult(helper, text: "wget\nfirefox\n")
-        let changed = try render(helper, event: .pageFieldChanged(page: "homebrew-command", field: "command", values: .object(["command": .string("config"), "kind": .string("cask")])), state: result.state)
+        let changed = try render(helper, event: .pageFieldChanged(page: "homebrew-command", field: "section", values: .object(["section": .string("doctor"), "kind": .string("cask")])), state: result.state)
         XCTAssertEqual(changed.page?.collection?.items.map(\.title), ["wget", "firefox"])
         XCTAssertTrue(changed.page?.collection?.items.allSatisfy { $0.subtitle?.isEmpty == true } == true)
         XCTAssertNil(changed.operation); XCTAssertTrue(changed.page?.sources.isEmpty == true)
@@ -237,11 +243,59 @@ final class HomebrewTests: XCTestCase {
     func testReopeningAnotherShortcutResetsOnlyItsCommandInputsWithoutRunningIt() throws {
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
         let result = try readResult(helper, text: "wget\nfirefox\n")
-        let called = try render(helper, command: "brew.info", input: .object(["package": .string("wget")]), event: .called, state: result.state)
-        XCTAssertEqual(called.state.value(atPointer: "/command"), .string("info"))
+        let called = try render(helper, command: "brew.search", input: .object(["package": .string("wget")]), event: .called, state: result.state)
+        XCTAssertEqual(called.state.value(atPointer: "/command"), .string("search"))
         XCTAssertEqual(called.state.value(atPointer: "/package"), .string("wget"))
-        XCTAssertEqual(called.page?.reset, .components(["command", "package"]))
+        XCTAssertEqual(called.page?.reset, .components(["section", "package"]))
         XCTAssertEqual(called.page?.collection?.items.map(\.title), ["wget", "firefox"])
         XCTAssertNil(called.operation); XCTAssertTrue(called.page?.sources.isEmpty == true)
+    }
+    func testNestedMaintenanceReportsAndTapActionsRemainAvailableWithoutStandaloneEntrypoints() throws {
+        let helper = try PluginTestHelper(); defer { helper.shutdown() }
+        for (command, field, value, operation) in [
+            ("brew.doctor", "report", "config", "commandOutput"),
+            ("brew.doctor", "report", "version", "commandOutput"),
+            ("brew.cleanup", "maintenance", "autoremove", "autoremove"),
+            ("brew.taps", "tapAction", "untap", "untap")
+        ] {
+            let opened = try render(helper, command: command, input: .object(["package": .string("user/repo")]))
+            let chosen = try render(helper, command: command, event: .pageFieldChanged(page: "homebrew-command", field: field, values: .object([field: .string(value)])), state: opened.state)
+            XCTAssertEqual(chosen.state.value(atPointer: "/command"), .string(value))
+            XCTAssertNil(chosen.operation); XCTAssertTrue(chosen.page?.sources.isEmpty == true)
+            let run = try render(helper, command: command, event: press(), state: chosen.state)
+            if operation == "commandOutput" {
+                XCTAssertEqual(run.page?.sources.first?.input.value(atPointer: "/command"), .string(value))
+            } else {
+                XCTAssertEqual(run.operation?.input.value(atPointer: "/operation"), .string(operation))
+            }
+        }
+    }
+    func testPackageMutationRowOnlyPreparesTheFormUntilAnExplicitRun() throws {
+        let helper = try PluginTestHelper(); defer { helper.shutdown() }
+        let result = try readResult(helper, text: "wget\n")
+        let id = try XCTUnwrap(result.page?.collection?.id)
+        let prepared = try render(helper, event: .itemAction(page: "homebrew-command", collection: id, action: "package-uninstall", item: .init(id: "result-0", section: nil, text: "wget"), values: .object([:])), state: result.state)
+        XCTAssertEqual(prepared.state.value(atPointer: "/command"), .string("uninstall"))
+        XCTAssertEqual(prepared.state.value(atPointer: "/section"), .string("list"))
+        XCTAssertNil(prepared.operation); XCTAssertTrue(prepared.page?.sources.isEmpty == true)
+        XCTAssertNotNil(prepared.page?.component("packageAction"))
+        XCTAssertNotNil(prepared.page?.component("input-help"), "Unclassified native list rows still require Formula/Cask selection")
+        let run = try render(helper, event: press(values: .object(["kind": .string("formula")])), state: prepared.state)
+        XCTAssertEqual(run.operation?.input, .object(["tool": .string("homebrew"), "operation": .string("uninstall"), "kind": .string("formula"), "name": .string("wget")]))
+        let unsupported = try render(helper, event: .itemAction(page: "homebrew-command", collection: id, action: "package-install", item: .init(id: "result-0", section: nil, text: "wget"), values: .object([:])), state: result.state)
+        XCTAssertEqual(unsupported.state.value(atPointer: "/command"), .string("list"))
+        XCTAssertNil(unsupported.operation)
+    }
+    func testMainNavigationCannotBeOverriddenByThePreviousNestedFieldSnapshot() throws {
+        let helper = try PluginTestHelper(); defer { helper.shutdown() }
+        let opened = try render(helper, command: "brew.doctor")
+        let config = try render(helper, event: .pageFieldChanged(page: "homebrew-command", field: "report", values: .object(["report": .string("config")])), state: opened.state)
+        let search = try render(helper, event: .pageFieldChanged(page: "homebrew-command", field: "section", values: .object(["section": .string("search"), "report": .string("config"), "packageAction": .string("uninstall")])), state: config.state)
+        XCTAssertEqual(search.state.value(atPointer: "/command"), .string("search"))
+        XCTAssertEqual(search.state.value(atPointer: "/section"), .string("search"))
+        XCTAssertNil(search.operation); XCTAssertTrue(search.page?.sources.isEmpty == true)
+        XCTAssertNil(search.page?.component("report")); XCTAssertNil(search.page?.component("packageAction"))
+        guard case .choiceField(let field)? = search.page?.component("section") else { return XCTFail("Missing Homebrew navigation") }
+        XCTAssertEqual(field.choices.count, 10)
     }
 }

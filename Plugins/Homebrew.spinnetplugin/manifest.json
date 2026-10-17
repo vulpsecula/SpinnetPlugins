@@ -3,7 +3,7 @@
   "api_level": 6,
   "id": "com.spinnet.homebrew",
   "name": "Homebrew",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "capabilities": [
     "read_reviewed_tools",
     "run_reviewed_tool_tasks"
@@ -15,27 +15,16 @@
     {
       "capability": "read_reviewed_tools",
       "command_ids": [
-        "brew.open",
         "brew.installed",
         "brew.search",
         "brew.outdated",
-        "brew.vulnerabilities",
-        "brew.doctor",
-        "brew.adopt",
         "brew.upgrade",
+        "brew.update",
+        "brew.adopt",
         "brew.services",
         "brew.taps",
-        "brew.services-menu",
-        "brew.cleanup",
-        "brew.clear-cache",
-        "brew.autoremove",
-        "brew.update",
-        "brew.install",
-        "brew.uninstall",
-        "brew.info",
-        "brew.config",
-        "brew.version",
-        "brew.untap"
+        "brew.doctor",
+        "brew.cleanup"
       ],
       "reviewed_tools": [
         {
@@ -59,27 +48,16 @@
     {
       "capability": "run_reviewed_tool_tasks",
       "command_ids": [
-        "brew.open",
         "brew.installed",
         "brew.search",
         "brew.outdated",
-        "brew.vulnerabilities",
-        "brew.doctor",
-        "brew.adopt",
         "brew.upgrade",
+        "brew.update",
+        "brew.adopt",
         "brew.services",
         "brew.taps",
-        "brew.services-menu",
-        "brew.cleanup",
-        "brew.clear-cache",
-        "brew.autoremove",
-        "brew.update",
-        "brew.install",
-        "brew.uninstall",
-        "brew.info",
-        "brew.config",
-        "brew.version",
-        "brew.untap"
+        "brew.doctor",
+        "brew.cleanup"
       ],
       "reviewed_tools": [
         {
@@ -114,12 +92,9 @@
   "preset": {
     "readiness": "ready_to_use",
     "is_configurable": false,
-    "default_primary_command_id": "brew.open",
+    "default_primary_command_id": "brew.installed",
     "default_alternate_command_ids": [],
     "default_inputs": {
-      "brew.open": {
-        "package": ""
-      },
       "brew.installed": {
         "package": ""
       },
@@ -129,16 +104,13 @@
       "brew.outdated": {
         "package": ""
       },
-      "brew.vulnerabilities": {
+      "brew.upgrade": {
         "package": ""
       },
-      "brew.doctor": {
+      "brew.update": {
         "package": ""
       },
       "brew.adopt": {
-        "package": ""
-      },
-      "brew.upgrade": {
         "package": ""
       },
       "brew.services": {
@@ -147,56 +119,15 @@
       "brew.taps": {
         "package": ""
       },
-      "brew.services-menu": {
+      "brew.doctor": {
         "package": ""
       },
       "brew.cleanup": {
-        "package": ""
-      },
-      "brew.clear-cache": {
-        "package": ""
-      },
-      "brew.autoremove": {
-        "package": ""
-      },
-      "brew.update": {
-        "package": ""
-      },
-      "brew.install": {
-        "package": ""
-      },
-      "brew.uninstall": {
-        "package": ""
-      },
-      "brew.info": {
-        "package": ""
-      },
-      "brew.config": {
-        "package": ""
-      },
-      "brew.version": {
-        "package": ""
-      },
-      "brew.untap": {
         "package": ""
       }
     }
   },
   "commands": [
-    {
-      "id": "brew.open",
-      "title": "Homebrew",
-      "execution": "javascript",
-      "is_configurable": true,
-      "script": "brew.js",
-      "configuration_fields": [
-        {
-          "key": "package",
-          "title": "Package or Search Text",
-          "kind": "text"
-        }
-      ]
-    },
     {
       "id": "brew.installed",
       "title": "Show Installed",
@@ -240,11 +171,11 @@
       ]
     },
     {
-      "id": "brew.vulnerabilities",
-      "title": "Security Check",
+      "id": "brew.upgrade",
+      "title": "Review All Upgrades",
       "execution": "javascript",
       "is_configurable": true,
-      "script": "brew-vulnerabilities.js",
+      "script": "brew-upgrade.js",
       "configuration_fields": [
         {
           "key": "package",
@@ -254,11 +185,11 @@
       ]
     },
     {
-      "id": "brew.doctor",
-      "title": "Run Doctor",
+      "id": "brew.update",
+      "title": "Update Catalog",
       "execution": "javascript",
+      "script": "brew-update.js",
       "is_configurable": true,
-      "script": "brew-doctor.js",
       "configuration_fields": [
         {
           "key": "package",
@@ -273,20 +204,6 @@
       "execution": "javascript",
       "is_configurable": true,
       "script": "brew-adopt.js",
-      "configuration_fields": [
-        {
-          "key": "package",
-          "title": "Package or Search Text",
-          "kind": "text"
-        }
-      ]
-    },
-    {
-      "id": "brew.upgrade",
-      "title": "Review All Upgrades",
-      "execution": "javascript",
-      "is_configurable": true,
-      "script": "brew-upgrade.js",
       "configuration_fields": [
         {
           "key": "package",
@@ -324,11 +241,11 @@
       ]
     },
     {
-      "id": "brew.services-menu",
-      "title": "Services Menu",
+      "id": "brew.doctor",
+      "title": "Run Doctor",
       "execution": "javascript",
       "is_configurable": true,
-      "script": "brew-services-menu.js",
+      "script": "brew-doctor.js",
       "configuration_fields": [
         {
           "key": "package",
@@ -350,132 +267,21 @@
           "kind": "text"
         }
       ]
-    },
-    {
-      "id": "brew.clear-cache",
-      "title": "Clear Plugin Cache",
-      "execution": "javascript",
-      "is_configurable": true,
-      "script": "brew-clear-cache.js",
-      "configuration_fields": [
-        {
-          "key": "package",
-          "title": "Package or Search Text",
-          "kind": "text"
-        }
-      ]
-    },
-    {
-      "id": "brew.autoremove",
-      "title": "Remove Unused Dependencies",
-      "execution": "javascript",
-      "is_configurable": true,
-      "script": "brew-autoremove.js",
-      "configuration_fields": [
-        {
-          "key": "package",
-          "title": "Package or Search Text",
-          "kind": "text"
-        }
-      ]
-    },
-    {
-      "id": "brew.update",
-      "title": "Update Catalog",
-      "execution": "javascript",
-      "script": "brew-update.js",
-      "is_configurable": true,
-      "configuration_fields": [
-        {
-          "key": "package",
-          "title": "Package or Search Text",
-          "kind": "text"
-        }
-      ]
-    },
-    {
-      "id": "brew.install",
-      "title": "Install Package",
-      "execution": "javascript",
-      "script": "brew-install.js",
-      "is_configurable": true,
-      "configuration_fields": [
-        {
-          "key": "package",
-          "title": "Package or Search Text",
-          "kind": "text"
-        }
-      ]
-    },
-    {
-      "id": "brew.uninstall",
-      "title": "Uninstall Package",
-      "execution": "javascript",
-      "script": "brew-uninstall.js",
-      "is_configurable": true,
-      "configuration_fields": [
-        {
-          "key": "package",
-          "title": "Package or Search Text",
-          "kind": "text"
-        }
-      ]
-    },
-    {
-      "id": "brew.info",
-      "title": "Package Info",
-      "execution": "javascript",
-      "script": "brew-info.js",
-      "is_configurable": true,
-      "configuration_fields": [
-        {
-          "key": "package",
-          "title": "Package or Search Text",
-          "kind": "text"
-        }
-      ]
-    },
-    {
-      "id": "brew.config",
-      "title": "Homebrew Configuration",
-      "execution": "javascript",
-      "script": "brew-config.js",
-      "is_configurable": true,
-      "configuration_fields": [
-        {
-          "key": "package",
-          "title": "Package or Search Text",
-          "kind": "text"
-        }
-      ]
-    },
-    {
-      "id": "brew.version",
-      "title": "Homebrew Version",
-      "execution": "javascript",
-      "script": "brew-version.js",
-      "is_configurable": true,
-      "configuration_fields": [
-        {
-          "key": "package",
-          "title": "Package or Search Text",
-          "kind": "text"
-        }
-      ]
-    },
-    {
-      "id": "brew.untap",
-      "title": "Remove Tap",
-      "execution": "javascript",
-      "script": "brew-untap.js",
-      "is_configurable": true,
-      "configuration_fields": [
-        {
-          "key": "package",
-          "title": "Package or Search Text",
-          "kind": "text"
-        }
-      ]
     }
-  ]
+  ],
+  "migrations": {
+    "rename_commands": {
+      "brew.open": "brew.installed",
+      "brew.vulnerabilities": "brew.doctor",
+      "brew.services-menu": "brew.services",
+      "brew.clear-cache": "brew.cleanup",
+      "brew.autoremove": "brew.cleanup",
+      "brew.install": "brew.search",
+      "brew.uninstall": "brew.installed",
+      "brew.info": "brew.installed",
+      "brew.config": "brew.doctor",
+      "brew.version": "brew.doctor",
+      "brew.untap": "brew.taps"
+    }
+  }
 }

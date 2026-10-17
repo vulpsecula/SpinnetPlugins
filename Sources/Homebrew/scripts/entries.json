@@ -1,10 +1,5 @@
 [
   [
-    "brew.open",
-    "Homebrew",
-    "list"
-  ],
-  [
     "brew.installed",
     "Show Installed",
     "list"
@@ -20,24 +15,19 @@
     "outdated"
   ],
   [
-    "brew.vulnerabilities",
-    "Security Check",
-    "legacy-security"
+    "brew.upgrade",
+    "Review All Upgrades",
+    "upgrade"
   ],
   [
-    "brew.doctor",
-    "Run Doctor",
-    "doctor"
+    "brew.update",
+    "Update Catalog",
+    "update"
   ],
   [
     "brew.adopt",
     "Adopt Apps",
     "adopt"
-  ],
-  [
-    "brew.upgrade",
-    "Review All Upgrades",
-    "upgrade"
   ],
   [
     "brew.services",
@@ -50,58 +40,13 @@
     "tap"
   ],
   [
-    "brew.services-menu",
-    "Services Menu",
-    "services"
+    "brew.doctor",
+    "Run Doctor",
+    "doctor"
   ],
   [
     "brew.cleanup",
     "Clean Up",
     "cleanup"
-  ],
-  [
-    "brew.clear-cache",
-    "Clear Plugin Cache",
-    "legacy-cache"
-  ],
-  [
-    "brew.autoremove",
-    "Remove Unused Dependencies",
-    "autoremove"
-  ],
-  [
-    "brew.update",
-    "Update Catalog",
-    "update"
-  ],
-  [
-    "brew.install",
-    "Install Package",
-    "install"
-  ],
-  [
-    "brew.uninstall",
-    "Uninstall Package",
-    "uninstall"
-  ],
-  [
-    "brew.info",
-    "Package Info",
-    "info"
-  ],
-  [
-    "brew.config",
-    "Homebrew Configuration",
-    "config"
-  ],
-  [
-    "brew.version",
-    "Homebrew Version",
-    "version"
-  ],
-  [
-    "brew.untap",
-    "Remove Tap",
-    "untap"
   ]
 ]

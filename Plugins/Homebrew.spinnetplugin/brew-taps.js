@@ -4,9 +4,14 @@ const entryCommand = "brew.taps";
   const c = spinnet.ui.components;
   const names = ["list","outdated","search","info","update","upgrade","install","uninstall","adopt","services","tap","untap","doctor","cleanup","autoremove","config","version"];
   const titles = ["Installed","Updates","Search","Package Info","Update Catalog","Upgrade","Install","Uninstall","Adopt App","Services","Taps","Remove Tap","Doctor","Clean Up","Autoremove","Configuration","Version"];
+  const sections = ["list","search","outdated","upgrade","update","adopt","services","tap","doctor","cleanup"];
+  const sectionTitles = ["Installed","Search","Available Upgrades","Upgrade All","Update Catalog","Adopt Apps","Services","Taps","Doctor","Clean Up"];
   const e = event || {}, initial = typeof input === "object" && input || {};
   const mode = names.includes(entryMode) ? entryMode : "list";
-  const s = Object.assign({command:mode,package:initial.package || "",kind:"both",serviceAction:"list",serial:0,output:"",message:"",read:null,readPurpose:"",taskID:null,taskRunning:false,waitingTask:false,admitted:false,seenTasks:[],adoption:null,lastCommand:"",truncated:false,result:null,display:"results",filter:""}, state || {});
+  const s = Object.assign({command:mode,section:sections.includes(mode) ? mode : "list",package:initial.package || "",kind:"both",serviceAction:"list",serial:0,output:"",message:"",read:null,readPurpose:"",taskID:null,taskRunning:false,waitingTask:false,admitted:false,seenTasks:[],adoption:null,lastCommand:"",truncated:false,result:null,display:"results",filter:""}, state || {});
+  function rowActions(row) {
+    return ["package-info"].concat(s.result.command === "search" && row.accessory !== "Installed" ? ["package-install"] : s.result.command === "outdated" ? ["package-upgrade"] : ["package-upgrade","package-uninstall"]);
+  }
   // Interpret only complete, successful native reads. Unknown formats, diagnostics and
   // Task transcripts stay literal; changing the next command never relabels old output.
   function presentation() {
@@ -61,17 +66,31 @@ const entryCommand = "brew.taps";
   const reset = [];
   const busy = s.read || s.taskRunning || s.waitingTask;
   if (e.type === "called" && !busy) {
-    Object.assign(s,{command:mode,package:initial.package || "",message:"",adoption:null});
-    reset.push("command","package");
+    Object.assign(s,{command:mode,section:mode,package:initial.package || "",message:"",adoption:null});
+    reset.push("section","package","report","tapAction","maintenance");
   }
-  if (!busy) for (const key of ["command","package","kind","serviceAction"]) if (e.values && typeof e.values[key] === "string" && s[key] !== e.values[key]) { s[key] = e.values[key]; s.adoption = null; }
+  if (!busy && e.values) {
+    if (sections.includes(e.values.section) && s.section !== e.values.section) {
+      s.section = e.values.section; s.command = s.section; s.adoption = null;
+      reset.push("report","tapAction","maintenance");
+    }
+    const nested = s.section === "doctor" ? ["report",["doctor","config","version"]] : s.section === "tap" ? ["tapAction",["tap","untap"]] : s.section === "cleanup" ? ["maintenance",["cleanup","autoremove"]] : ["packageAction",["info","install","upgrade","uninstall"]];
+    // A section change may carry the previous page's field snapshot; it must
+    // not route the new section back into the old package operation.
+    if (e.type === "field_changed" && e.field === nested[0] && nested[1].includes(e.values[nested[0]])) { s.command = e.values[nested[0]]; s.adoption = null; }
+    for (const key of ["package","kind","serviceAction"]) if (typeof e.values[key] === "string" && s[key] !== e.values[key]) { s[key] = e.values[key]; s.adoption = null; }
+  }
   if (e.values && ["results","raw"].includes(e.values.display)) s.display = e.values.display;
   const filterValue = e.values && e.values["filter-" + s.serial];
   if (typeof filterValue === "string" && s.filter !== filterValue) { s.filter = filterValue.slice(0,256); reset.push("results-" + s.serial); }
   let inspect = false;
-  if (!busy && e.type === "item_action" && e.collection === "results-" + s.serial && e.action === "package-info" && s.display === "results") {
+  const packageOperations = {"package-info":"info","package-install":"install","package-upgrade":"upgrade","package-uninstall":"uninstall"};
+  if (!busy && e.type === "item_action" && e.collection === "results-" + s.serial && packageOperations[e.action] && s.display === "results") {
     const parsed = presentation(), row = parsed && parsed.packages && parsed.rows.find(row => e.item && row.id === e.item.id);
-    if (row) { s.command = "info"; s.package = row.name; s.kind = row.kind; s.adoption = null; inspect = true; reset.push("command","package","kind"); }
+    if (row && rowActions(row).includes(e.action)) {
+      s.command = packageOperations[e.action]; s.section = s.result.command; s.package = row.name; s.kind = row.kind; s.adoption = null;
+      inspect = s.command === "info"; reset.push("section","package","kind","packageAction");
+    }
   }
   if (!names.includes(s.command)) s.command = "list";
   const packageCommands = ["list","outdated","search","info","upgrade","install","uninstall"];
@@ -164,7 +183,12 @@ const entryCommand = "brew.taps";
   if (e.type === "action_chosen" && e.action === "cancel-read" && s.read) { s.read = null; s.message = "Read cancelled."; }
   const running = s.read || s.taskRunning || s.waitingTask, content = [];
   if (!running) {
-    const controls = [c.choiceField({id:"command",title:"Command",choices:names,choiceTitles:titles,value:s.command})];
+    const controls = [c.choiceField({id:"section",title:"Homebrew",choices:sections,choiceTitles:sectionTitles,value:s.section})];
+    if (s.section === "doctor") controls.push(c.choiceField({id:"report",title:"Report",choices:["doctor","config","version"],choiceTitles:["Doctor","Configuration","Version"],value:s.command}));
+    if (s.section === "tap") controls.push(c.choiceField({id:"tapAction",title:"Action",choices:["tap","untap"],choiceTitles:["List / Add Tap","Remove Tap"],value:s.command}));
+    if (s.section === "cleanup") controls.push(c.choiceField({id:"maintenance",title:"Action",choices:["cleanup","autoremove"],choiceTitles:["Clean Old Downloads","Remove Unused Dependencies"],value:s.command}));
+    const packageOperation = ["info","install","uninstall"].includes(s.command) || (s.command === "upgrade" && s.section !== "upgrade");
+    if (packageOperation) controls.push(c.choiceField({id:"packageAction",title:"Package Action",choices:["info","install","upgrade","uninstall"],choiceTitles:["Info","Install","Upgrade","Uninstall"],value:s.command}));
     if (packageCommands.includes(s.command)) controls.push(c.choiceField({id:"kind",title:"Packages",choices:["both","formula","cask"],choiceTitles:["All","Formulae","Cask Apps"],value:s.kind}));
     if (s.command === "services") controls.push(c.choiceField({id:"serviceAction",title:"Action",choices:["list","start","stop","restart","info"],value:argument.action}));
     if (!problem) controls.push(c.actions({id:"execute",actions:[c.button({id:"run-command",title:s.adoption && s.command === "adopt" ? "Confirm Adoption…" : s.command === "search" ? "Search" : ["list","outdated","config","services","tap"].includes(s.command) ? "Refresh" : "Run"})]}));
@@ -182,14 +206,12 @@ const entryCommand = "brew.taps";
     // Paging bounds answer size while preserving stable row IDs and scroll position.
     const start = e.type === "load_range" && e.collection === collectionID ? Math.max(0,Math.min(rows.length,Math.floor(e.start || 0))) : 0;
     const count = e.type === "load_range" ? Math.max(1,Math.min(600,Math.floor(e.count || 80))) : 80;
-    content.push(c.list({id:collectionID,rows:10,total:rows.length,start,items:rows.slice(start,start + count).map(row => c.item({id:row.id,title:row.title,subtitle:row.subtitle,accessory:row.accessory,icon:row.icon})),emptyText:query ? "No results match this filter." : parsed.empty,actions:parsed.packages ? [c.itemAction({id:"package-info",title:"Package Info",default:true})] : undefined}));
+    content.push(c.list({id:collectionID,rows:10,total:rows.length,start,items:rows.slice(start,start + count).map(row => c.item({id:row.id,title:row.title,subtitle:row.subtitle,accessory:row.accessory,icon:row.icon,actions:parsed.packages ? rowActions(row) : undefined})),emptyText:query ? "No results match this filter." : parsed.empty,actions:parsed.packages ? [c.itemAction({id:"package-info",title:"Package Info",default:true}),c.itemAction({id:"package-install",title:"Install…"}),c.itemAction({id:"package-upgrade",title:"Upgrade…"}),c.itemAction({id:"package-uninstall",title:"Uninstall…"})] : undefined}));
   } else if (!s.lastCommand && !running) content.push(c.column({id:"command-empty",style:{padding:16},content:[c.icon({id:"empty-icon",source:{symbol:"shippingbox"},size:32}),c.text({id:"empty-title",text:titles[names.indexOf(s.command)],style:{fontSize:20,fontWeight:"semibold"}}),c.text({id:"empty-help",text:"Choose your options above, then run the command to load its results.",style:{color:"secondary"}})]}));
   else content.push(c.text({id:"command-output",title:"Output",text:s.output || (running ? "Waiting for output…" : "No output."),format:"output"}));
   if (s.truncated) content.push(c.text({id:"output-limit",text:"Showing the latest output; earlier text exceeded the display limit.",style:{color:"secondary"}}));
   if (s.taskRunning) content.push(c.actions({id:"stop",actions:[c.button({id:"stop-command",title:"Stop"})]}));
   if (s.read) content.push(c.actions({id:"cancel",actions:[c.button({id:"cancel-read",title:"Cancel"})]}));
-  const legacy = entryMode === "legacy-security" ? "Security Check is no longer provided by this command launcher." : entryMode === "legacy-cache" ? "This command launcher does not cache package information. Previous Plugin data has been retained." : "";
-  if (legacy) content.push(c.text({id:"legacy-command",text:legacy,style:{color:"secondary"}}));
   const sources = [];
   if (s.read) sources.push(spinnet.tools.read.source(s.read.id,s.read.input,{deliver:true}));
   if (s.taskRunning || s.waitingTask) sources.push(spinnet.activities.list.source("command-tasks",{every:1,deliver:true}));
