@@ -3,7 +3,7 @@
   "api_level": 6,
   "id": "com.spinnet.homebrew",
   "name": "Homebrew",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "capabilities": [
     "read_reviewed_tools",
     "run_reviewed_tool_tasks"
