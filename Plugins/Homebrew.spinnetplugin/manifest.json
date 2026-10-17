@@ -1,18 +1,19 @@
 {
   "protocol_version": "1.0",
-  "api_level": 5,
+  "api_level": 6,
   "id": "com.spinnet.homebrew",
   "name": "Homebrew",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "capabilities": [
-    "control_external_app"
+    "read_reviewed_tools",
+    "run_reviewed_tool_tasks"
   ],
   "optional_capabilities": [
-    "control_external_app"
+    "run_reviewed_tool_tasks"
   ],
   "capability_scopes": [
     {
-      "capability": "control_external_app",
+      "capability": "read_reviewed_tools",
       "command_ids": [
         "brew.open",
         "brew.installed",
@@ -36,18 +37,78 @@
         "brew.version",
         "brew.untap"
       ],
+      "reviewed_tools": [
+        {
+          "tool": "homebrew",
+          "operations": [
+            "commandOutput",
+            "adoptionCandidates",
+            "adoptionPreview"
+          ],
+          "kinds": [
+            "formula",
+            "cask"
+          ]
+        }
+      ],
       "data_types": [],
       "includes_existing_host_data": false,
       "https_hosts": [],
-      "external_apps": [
+      "external_apps": []
+    },
+    {
+      "capability": "run_reviewed_tool_tasks",
+      "command_ids": [
+        "brew.open",
+        "brew.installed",
+        "brew.search",
+        "brew.outdated",
+        "brew.vulnerabilities",
+        "brew.doctor",
+        "brew.adopt",
+        "brew.upgrade",
+        "brew.services",
+        "brew.taps",
+        "brew.services-menu",
+        "brew.cleanup",
+        "brew.clear-cache",
+        "brew.autoremove",
+        "brew.update",
+        "brew.install",
+        "brew.uninstall",
+        "brew.info",
+        "brew.config",
+        "brew.version",
+        "brew.untap"
+      ],
+      "reviewed_tools": [
         {
-          "bundle_id": "com.apple.Terminal",
-          "name": "Terminal",
-          "operation_families": [
-            "homebrew_commands"
+          "tool": "homebrew",
+          "operations": [
+            "install",
+            "upgrade",
+            "upgradeAll",
+            "uninstall",
+            "adopt",
+            "tap",
+            "untap",
+            "serviceStart",
+            "serviceStop",
+            "serviceRestart",
+            "cleanup",
+            "autoremove",
+            "update"
+          ],
+          "kinds": [
+            "formula",
+            "cask"
           ]
         }
-      ]
+      ],
+      "data_types": [],
+      "includes_existing_host_data": false,
+      "https_hosts": [],
+      "external_apps": []
     }
   ],
   "preset": {
