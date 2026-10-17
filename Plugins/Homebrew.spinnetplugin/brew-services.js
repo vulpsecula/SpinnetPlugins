@@ -94,8 +94,9 @@ const entryCommand = "brew.services";
   }
   if (!names.includes(s.command)) s.command = "list";
   const packageCommands = ["list","outdated","search","info","upgrade","install","uninstall"];
-  const hasPackage = packageCommands.includes(s.command) || ["adopt","services","tap","untap"].includes(s.command);
-  const needsPackage = ["install","uninstall","search","info","adopt","untap"].includes(s.command) || (s.command === "services" && s.serviceAction !== "list");
+  const targetedUpgrade = s.command === "upgrade" && s.section !== "upgrade";
+  const hasPackage = (packageCommands.includes(s.command) && (s.command !== "upgrade" || targetedUpgrade)) || ["adopt","services","tap","untap"].includes(s.command);
+  const needsPackage = targetedUpgrade || ["install","uninstall","search","info","adopt","untap"].includes(s.command) || (s.command === "services" && s.serviceAction !== "list");
   const packageText = String(s.package || "").trim(), argument = {command:s.command};
   if (packageCommands.includes(s.command) && ["formula","cask"].includes(s.kind)) argument.kind = s.kind;
   if (s.command === "services") argument.action = ["list","start","stop","restart","info"].includes(s.serviceAction) ? s.serviceAction : "list";
@@ -103,7 +104,7 @@ const entryCommand = "brew.services";
   let problem = needsPackage && !packageText ? "Enter " + (s.command === "search" ? "search text." : s.command === "untap" ? "a tap in owner/repository form." : "a package name.") : "";
   if (argument.package && (packageText.length > 160 || /[\x00-\x1f\x7f]/.test(packageText))) problem = "Use up to 160 characters without control characters.";
   if (argument.package && s.command !== "search" && !(["tap","untap"].includes(s.command) ? /^[a-z0-9][a-z0-9_.-]{0,63}\/[a-z0-9][a-z0-9_.-]{0,63}$/ : /^(?:[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_.-]*\/)?[a-z0-9][a-z0-9+_.@-]*$/).test(packageText)) problem = "Enter one package name or owner/repository/package, without shell options.";
-  if ((["install","uninstall"].includes(s.command) || (s.command === "upgrade" && packageText)) && !argument.kind) problem = "Select Formula or Cask App for this package operation.";
+  if ((["install","uninstall"].includes(s.command) || targetedUpgrade) && !argument.kind) problem = "Select Formula or Cask App for this package operation.";
   const argv = [s.command === "version" ? "--version" : s.command];
   if (argument.kind) argv.push("--" + argument.kind);
   if (s.command === "services") argv.push(argument.action);
@@ -130,8 +131,8 @@ const entryCommand = "brew.services";
     else if (s.command === "adopt" && !(s.adoption && s.adoption.package === packageText && s.adoption.target)) read({tool:"homebrew",operation:"adoptionCandidates"},"adoption-candidates");
     else {
       const task = {tool:"homebrew",operation:s.command};
-      if (["install","uninstall"].includes(s.command) || (s.command === "upgrade" && packageText)) { task.kind = argument.kind; task.name = packageText; }
-      if (s.command === "upgrade" && !packageText) { task.operation = "upgradeAll"; if (argument.kind) task.kind = argument.kind; }
+      if (["install","uninstall"].includes(s.command) || targetedUpgrade) { task.kind = argument.kind; task.name = packageText; }
+      if (s.command === "upgrade" && !targetedUpgrade) { task.operation = "upgradeAll"; if (argument.kind) task.kind = argument.kind; }
       if (["tap","untap"].includes(s.command)) task.tap = packageText;
       if (s.command === "services") { task.operation = "service" + argument.action[0].toUpperCase() + argument.action.slice(1); task.name = packageText; }
       if (s.command === "adopt") task.target = s.adoption.target;

@@ -56,8 +56,10 @@ final class HomebrewTests: XCTestCase {
     func testUpgradeUsesTheReviewedTaskAndStreamsItsOwnNativeTextWithoutPackageComponents() throws {
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
         let old: JSONValue = .object(["id": .string("old"), "kind": .string("task"), "tool": .string("homebrew"), "status": .string("ended"), "output": .string("old output")])
-        let opened = try render(helper, command: "brew.upgrade", input: .object(["package": .string("firefox")]))
-        let run = try render(helper, command: "brew.upgrade", event: press(values: .object(["kind": .string("cask")])), state: opened.state, activities: [old])
+        let listed = try readResult(helper, text: "firefox\n")
+        let collection = try XCTUnwrap(listed.page?.collection?.id)
+        let opened = try render(helper, event: .itemAction(page: "homebrew-command", collection: collection, action: "package-upgrade", item: .init(id: "result-0", section: nil, text: "firefox"), values: .object([:])), state: listed.state)
+        let run = try render(helper, event: press(values: .object(["kind": .string("cask")])), state: opened.state, activities: [old])
         XCTAssertEqual(run.operation?.perform, "tools.startTask")
         XCTAssertEqual(run.operation?.input, .object(["tool": .string("homebrew"), "operation": .string("upgrade"), "kind": .string("cask"), "name": .string("firefox")]))
         let admitted = try render(helper, event: .operationFinished(id: "command-task", perform: "tools.startTask", outcome: .succeeded), state: run.state)
@@ -297,5 +299,16 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(search.page?.component("report")); XCTAssertNil(search.page?.component("packageAction"))
         guard case .choiceField(let field)? = search.page?.component("section") else { return XCTFail("Missing Homebrew navigation") }
         XCTAssertEqual(field.choices.count, 10)
+    }
+    func testUpgradeAllNeverUsesPackageTextFromAnotherPageOrAnOldShortcutInput() throws {
+        let helper = try PluginTestHelper(); defer { helper.shutdown() }
+        let opened = try render(helper, command: "brew.search", input: .object(["package": .string("wget")]))
+        let all = try render(helper, event: .pageFieldChanged(page: "homebrew-command", field: "section", values: .object(["section": .string("upgrade"), "package": .string("wget")])), state: opened.state)
+        XCTAssertNil(all.page?.component("package"))
+        let run = try render(helper, event: press(), state: all.state)
+        XCTAssertEqual(run.operation?.input, .object(["tool": .string("homebrew"), "operation": .string("upgradeAll")]))
+        let shortcut = try render(helper, command: "brew.upgrade", input: .object(["package": .string("firefox")]))
+        let shortcutRun = try render(helper, command: "brew.upgrade", event: press(), state: shortcut.state)
+        XCTAssertEqual(shortcutRun.operation?.input, .object(["tool": .string("homebrew"), "operation": .string("upgradeAll")]))
     }
 }
