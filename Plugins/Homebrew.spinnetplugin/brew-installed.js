@@ -95,7 +95,7 @@ const entryCommand = "brew.installed";
   }
   const sourceID = id => s.refresh ? id + "-" + s.refresh : id;
   const sourceIs = id => e.source === (id === "manage" && s.mode === "vulnerabilities" && s.securitySource ? s.securitySource : sourceID(id));
-  if (e.type === "called") { s.detail = null; s.manageDetail = null; s.progress = false; s.previewPage = false; s.packageOptions = false; }
+  if (e.type === "called") { s.detail = null; s.manageDetail = null; s.progress = false; s.previewPage = false; s.packageOptions = false; s.awaitingTask = false; s.pendingTaskBaseline = null; }
   if (typeof entryCommand === "string" && entryCommand === "brew.clear-cache" && (!e.type || e.type === "called")) {
     spinnet.storage.clear(); s.mode = "cleanup"; s.packages = []; s.manageResult = null;
     s.manageMessage = "Plugin Cache Cleared";
@@ -130,6 +130,10 @@ const entryCommand = "brew.installed";
     s.progress = false; s.previewPage = false; s.packageOptions = false;
   }
   let operation;
+  const startTask = (input, options) => {
+    s.pendingTaskBaseline = (spinnet.activities.list() || []).filter(task => task.kind === "task").map(task => task.id);
+    return spinnet.tools.startTask.operation(input, options);
+  };
   // Invocation state may encode object keys in a different order. Bind the
   // cached preview to its semantic typed request, not JSON member order.
   const previewRequest = input => JSON.stringify(Object.keys(input || {}).sort().map(key => [key, input[key]]));
@@ -151,18 +155,18 @@ const entryCommand = "brew.installed";
       if (at >= 0) selected.splice(at, 1); else if (selected.length < 50) selected.push(pkg.name);
     }
   }
-  if (e.type === "action_chosen" && e.action === "upgrade-all") operation = spinnet.tools.startTask.operation(Object.assign({tool: "homebrew", operation: "upgradeAll", greedy: s.greedy === "on"}, s.kind !== "both" ? {kind: s.kind} : {}), {id: "upgrade-all", notify: true});
+  if (e.type === "action_chosen" && e.action === "upgrade-all") operation = startTask(Object.assign({tool: "homebrew", operation: "upgradeAll", greedy: s.greedy === "on"}, s.kind !== "both" ? {kind: s.kind} : {}), {id: "upgrade-all", notify: true});
   if (e.type === "action_chosen" && e.action.startsWith("upgrade-selected-")) {
     const kind = e.action.slice(17), names = s.selectedUpgrades[kind];
-    if (names && names.length) operation = spinnet.tools.startTask.operation(Object.assign({tool: "homebrew", operation: "upgradeSelected", kind, names}, kind === "cask" ? {greedy: s.greedy === "on"} : {}), {id: "selected-" + kind, notify: true});
+    if (names && names.length) operation = startTask(Object.assign({tool: "homebrew", operation: "upgradeSelected", kind, names}, kind === "cask" ? {greedy: s.greedy === "on"} : {}), {id: "selected-" + kind, notify: true});
   }
   if (e.type === "action_chosen" && ["install", "upgrade", "uninstall", "pin", "unpin"].includes(e.action) && s.detail) {
-    operation = spinnet.tools.startTask.operation(Object.assign({tool: "homebrew", operation: e.action, kind: s.detail.kind, name: s.detail.name}, e.action === "uninstall" && s.detail.kind === "cask" && s.zap === "on" ? {zap: true} : {}), {id: e.action, notify: true});
+    operation = startTask(Object.assign({tool: "homebrew", operation: e.action, kind: s.detail.kind, name: s.detail.name}, e.action === "uninstall" && s.detail.kind === "cask" && s.zap === "on" ? {zap: true} : {}), {id: e.action, notify: true});
   }
-  if (e.type === "action_chosen" && e.action === "change-language" && s.detail && s.detail.kind === "cask" && (s.detail.languages || []).includes(s.language || s.detail.selected_language || s.detail.languages[0])) operation = spinnet.tools.startTask.operation({tool: "homebrew", operation: "changeLanguage", kind: "cask", name: s.detail.name, language: s.language || s.detail.selected_language || s.detail.languages[0]}, {notify: true});
+  if (e.type === "action_chosen" && e.action === "change-language" && s.detail && s.detail.kind === "cask" && (s.detail.languages || []).includes(s.language || s.detail.selected_language || s.detail.languages[0])) operation = startTask({tool: "homebrew", operation: "changeLanguage", kind: "cask", name: s.detail.name, language: s.language || s.detail.selected_language || s.detail.languages[0]}, {notify: true});
   if (e.type === "operation_finished" && e.perform === "tools.startTask") {
-    if (e.outcome === "succeeded") { s.progress = true; s.taskID = null; if (["review-link", "review-unlink"].includes(e.operation)) s.previewPage = false; }
-    else { s.detailMessage = "Task " + e.outcome + (e.reason ? ": " + e.reason : ""); if (s.mode === "autoremove") s.autoremoveTaskMessage = s.detailMessage; if (e.operation === "catalog-update") { s.catalogUpdateWaiting = false; spinnet.storage.remove("catalog-update"); } }
+    if (e.outcome === "succeeded") { s.progress = true; s.taskID = null; s.awaitingTask = true; if (["review-link", "review-unlink"].includes(e.operation)) s.previewPage = false; }
+    else { s.awaitingTask = false; s.pendingTaskBaseline = null; s.detailMessage = "Task " + e.outcome + (e.reason ? ": " + e.reason : ""); if (s.mode === "autoremove") s.autoremoveTaskMessage = s.detailMessage; if (e.operation === "catalog-update") { s.catalogUpdateWaiting = false; spinnet.storage.remove("catalog-update"); } }
   }
   if (e.type === "action_chosen" && e.action === "browse") { s.progress = false; s.taskID = null; }
   if (e.type === "action_chosen" && e.action === "task-details") { s.progress = true; s.taskID = null; }
@@ -173,6 +177,10 @@ const entryCommand = "brew.installed";
   if (e.type === "source_delivered" && e.source === "activities") {
     if (e.failure) s.taskMessage = e.failure.message;
     else { s.tasks = e.result || []; s.tasksLoaded = true; s.taskMessage = ""; }
+    if (!e.failure && s.awaitingTask) {
+      const admitted = s.tasks.find(task => task.kind === "task" && !(s.pendingTaskBaseline || []).includes(task.id));
+      if (admitted) { s.taskID = admitted.id; s.awaitingTask = false; s.pendingTaskBaseline = null; }
+    }
     if (!e.failure && s.catalogUpdateWaiting) {
       const task = s.tasks.find(t => t.kind === "task" && t.operation === "update" && !(s.catalogUpdateBaseline || []).includes(t.id));
       if (task && task.result) {
@@ -185,6 +193,13 @@ const entryCommand = "brew.installed";
         s.analyticsInput = null; s.analytics = null; s.previewInput = null; s.preview = null; s.previewPage = false;
       }
     }
+  }
+  if (e.type === "action_chosen" && e.action === "check-updates") {
+    s.catalogUpdateBaseline = (spinnet.activities.list() || []).map(task => task.id);
+    s.catalogUpdateWaiting = true;
+    spinnet.storage.set({key: "catalog-update", value: {baseline: s.catalogUpdateBaseline}});
+    s.detailMessage = "Check for Updates changes Homebrew itself, all taps and package catalogs after Host Confirmation.";
+    operation = startTask({tool: "homebrew", operation: "update"}, {id: "catalog-update", notify: true});
   }
   if (e.type === "operation_finished" && e.view_closed) return {};
   if (s.mode === "home" && !s.detail && !s.progress) {
@@ -203,11 +218,12 @@ const entryCommand = "brew.installed";
     ];
     return spinnet.ui.showPage(spinnet.ui.page({id: "homebrew-home", title: "Homebrew", resizable: {minHeight: 360}, content: [
       c.text({id: "intro", text: "What would you like to do?", style: {fontSize: 18, fontWeight: "semibold"}}),
+      c.actions({id: "catalog-controls", actions: [c.button({id: "check-updates", title: "Update Homebrew Catalog…"})]}),
       c.text({id: "navigation-help", text: "Open a section with Return or a double-click. Changes are reviewed before they run.", style: {color: "secondary"}}),
       c.list({id: "destinations", total: destinations.length, start: 0, sections: [c.section({id: "packages", title: "Packages", count: 3}), c.section({id: "manage", title: "Manage Homebrew", count: 7}), c.section({id: "tasks", title: "Activity", count: 1})],
         items: destinations.map(([id, title, subtitle, symbol]) => c.item({id, title, text: title, subtitle, icon: {symbol}})),
         actions: [c.itemAction({id: "navigate", title: "Open", default: true})]})
-    ], sources: watching([])}), {state: s});
+    ], sources: watching([])}), {state: s, operation});
   }
   if (e.type === "action_chosen" && (e.action === "preview-upgrade-all" || e.action.startsWith("preview-selected-"))) {
     const kind = e.action.slice(17), names = s.selectedUpgrades[kind];
@@ -233,6 +249,8 @@ const entryCommand = "brew.installed";
       content.push(c.progress({id: "progress-" + task.id, title: task.name, status: task.stage + " · " + Math.floor(task.elapsed_seconds || 0) + "s" + (outcome ? " · " + outcome : ""), state: outcome === "completed" ? "succeeded" : outcome === "stopped" ? "cancelled" : outcome ? "failed" : task.status === "stopping" ? "cancelling" : "running", cancel: task.status === "running" ? {id: "cancel-" + task.id, title: "Stop"} : undefined}));
       content.push(c.text({id: "log-" + task.id, title: "Task Log", text: (task.log || []).join("\n") || (outcome ? "No log output was recorded." : "Waiting for Homebrew output…")}));
       content.push(c.text({id: "task-help", text: outcome ? "This task has ended. Viewing its result or log does not run it again." : "Stopping attempts to end this task. It does not undo changes already made.", style: {color: "secondary"}}));
+    } else if (s.awaitingTask) {
+      content.push(c.progress({id: "pending-task-progress", title: "Starting Homebrew Task", status: "Waiting for task status…", state: "running"}));
     } else {
       content.push(c.text({id: "task-help", text: "Open a task to see its result, progress and log. Running tasks continue when this window closes.", style: {color: "secondary"}}));
       const start = Math.min(s.taskStart || 0, Math.max(0, tasks.length - 1));
@@ -274,7 +292,7 @@ const entryCommand = "brew.installed";
     }
     const stored = readCache("preview-result");
     const result = stored && (stored.sourceID === undefined || stored.sourceID === previewSourceID) && (stored.request === undefined || stored.request === previewRequest(s.previewInput)) ? stored : {previewLines: []};
-    if (e.type === "action_chosen" && ["review-link", "review-unlink"].includes(e.action) && s.previewLoaded && result.linkTask && e.action === "review-" + result.linkTask.operation) operation = spinnet.tools.startTask.operation(result.linkTask, {id: e.action, notify: true});
+    if (e.type === "action_chosen" && ["review-link", "review-unlink"].includes(e.action) && s.previewLoaded && result.linkTask && e.action === "review-" + result.linkTask.operation) operation = startTask(result.linkTask, {id: e.action, notify: true});
     if (e.type === "load_range" && e.collection === "preview-lines") { s.previewStart = e.start; s.previewCount = Math.min(e.count, 40); }
     if (e.type === "item_action" && e.action === "preview-line") s.previewLine = Number(e.item.id);
     if (e.type === "action_chosen" && e.action === "preview-lines-back") s.previewLine = null;
@@ -302,7 +320,7 @@ const entryCommand = "brew.installed";
     const parts = s.query.split("/"), tap = parts.slice(0, 2).join("/"), kind = s.kind === "cask" ? "cask" : "formula";
     if (e.type === "action_chosen" && e.action === "qualified-inspect") { s.detail = {name: s.query, kind}; s.detailLoaded = false; s.detailMessage = ""; }
     else {
-      if (e.type === "action_chosen" && ["qualified-tap", "qualified-trust"].includes(e.action)) operation = spinnet.tools.startTask.operation({tool: "homebrew", operation: e.action === "qualified-tap" ? "tap" : "trust", tap}, {notify: true});
+      if (e.type === "action_chosen" && ["qualified-tap", "qualified-trust"].includes(e.action)) operation = startTask({tool: "homebrew", operation: e.action === "qualified-tap" ? "tap" : "trust", tap}, {notify: true});
       if (e.type === "action_chosen" && e.action === "qualified-back") { s.query = ""; }
       else return spinnet.ui.showPage(spinnet.ui.page({id: "homebrew-qualified", title: s.query, resizable: {minHeight: 320}, content: [
         homeNavigation(),
@@ -453,7 +471,7 @@ const entryCommand = "brew.installed";
     if (s.manageDetail) controls.push(c.actions({id: "back-navigation", actions: [c.button({id: "manage-back", title: "Back to " + modeTitles[modes.indexOf(s.mode)]})]}));
     else controls.push(c.text({id: "workflow-description", text: ({services: "Manage background services installed with Homebrew.", taps: "Taps are package sources. Adding a tap and trusting it are separate actions.", vulnerabilities: "Check installed command-line tools against known security advisories.", doctor: "Check Homebrew health. Open a finding to review its guidance or supported repair.", adopt: "Bring an existing App under Homebrew management after reviewing its match.", autoremove: "Remove formulae installed only as dependencies that Homebrew no longer needs. Explicitly installed tools and cask Apps are not removed.", cleanup: "Choose what to clean. Clearing the Plugin cache only resets this Plugin's saved results.", activity: "Confirmed work continues after closing this window. Open task details to see results and logs."})[s.mode], style: {color: "secondary"}}));
     const sources = [];
-    if (!["cleanup", "activity", "vulnerabilities"].includes(s.mode)) controls.push(c.actions({id: "refresh-controls", actions: [c.button({id: "refresh", title: "Refresh"})]}));
+    if (!["cleanup", "activity", "vulnerabilities"].includes(s.mode)) controls.push(c.actions({id: "refresh-controls", actions: [c.button({id: "refresh", title: "Refresh List"})]}));
     if (!["cleanup", "activity", "vulnerabilities"].includes(s.mode) || (s.mode === "vulnerabilities" && s.securityStatus === "running" && !s.manageDetail)) sources.push(spinnet.tools.read.source(s.mode === "vulnerabilities" ? s.securitySource : sourceID("manage"), Object.assign({tool: "homebrew", operation: s.mode === "adopt" ? "adoptionCandidates" : s.mode === "autoremove" ? "previewAutoremove" : s.mode}, s.mode === "vulnerabilities" ? {names: s.securityBatchNames} : {}), {deliver: true}));
     const latest = readCache("management-" + s.mode) || s.manageResult || {};
     if (s.mode === "doctor" && !s.manageDetail) {
@@ -469,7 +487,7 @@ const entryCommand = "brew.installed";
       if (s.autoremoveTaskMessage) controls.push(c.text({id: "autoremove-task-message", text: s.autoremoveTaskMessage}));
       controls.push(c.text({id: "autoremove-status", title: "Removal Preview", text: s.manageMessage ? "Could not refresh the preview. Use Refresh to retry." : !loaded ? "Checking for unused dependencies…" : latest.available === false ? "This Homebrew version is not supported by the reviewed preview." : latest.succeeded !== true || latest.complete !== true ? "Homebrew could not produce a complete removal plan. No removal is available." : !packages.length || latest.no_op ? "No unused dependencies to remove." : packages.length + (packages.length === 1 ? " unused dependency" : " unused dependencies") + " would be uninstalled."}));
       controls.push(c.text({id: "autoremove-help", text: "This preview changes nothing. Review Removal opens the Host confirmation with the exact dependencies; execution rechecks the plan. Completed work and output appear in Tasks and Logs.", style: {color: "secondary"}}));
-      if (e.type === "action_chosen" && e.action === "review-autoremove" && ready) { s.autoremoveTaskMessage = ""; operation = spinnet.tools.startTask.operation({tool: "homebrew", operation: "autoremove"}, {notify: true}); }
+      if (e.type === "action_chosen" && e.action === "review-autoremove" && ready) { s.autoremoveTaskMessage = ""; operation = startTask({tool: "homebrew", operation: "autoremove"}, {notify: true}); }
       if (e.type === "action_chosen" && e.action === "autoremove-output") s.autoremoveOutput = !s.autoremoveOutput;
       const actions = ready ? [c.button({id: "review-autoremove", title: "Review Removal…"})] : [];
       if (loaded && (latest.stdout || latest.stderr)) actions.push(c.button({id: "autoremove-output", title: s.autoremoveOutput ? "Hide Preview Output" : "Show Preview Output"}));
@@ -515,7 +533,7 @@ const entryCommand = "brew.installed";
           c.text({id: "doctor-repair-list", title: "Available Repairs", text: batch.repairs.map((repair, i) => (i + 1) + ". " + repair.title).join("\n\n")}),
           c.text({id: "doctor-repair-help", text: "Continue to review these operations in the Host confirmation. Administrator authorization is requested only if a selected repair needs it. This does not fix every Doctor finding."}),
           c.actions({id: "doctor-repair-continue", actions: [c.button({id: "confirm-doctor-repairs", title: "Continue to Host Confirmation"})]})];
-        if (e.type === "action_chosen" && e.action === "confirm-doctor-repairs") operation = spinnet.tools.startTask.operation({tool: "homebrew", operation: "doctorFix", target: batch.target}, {notify: true});
+        if (e.type === "action_chosen" && e.action === "confirm-doctor-repairs") operation = startTask({tool: "homebrew", operation: "doctorFix", target: batch.target}, {notify: true});
         return spinnet.ui.showPage(spinnet.ui.page({id: "homebrew-doctor-repairs", title: "Review Doctor Repairs", resizable: {minHeight: 320}, content: preview}), {state: s, operation});
       }
     }
@@ -525,7 +543,7 @@ const entryCommand = "brew.installed";
       if (s.mode === "services") {
         controls.push(c.text({id: "service-state", text: "Status: " + selected.status + (selected.user_owned ? " · user-owned service" : " · system-owned service")}));
         if (selected.user_owned) controls.push(c.actions({id: "service-controls", actions: ["serviceStart", "serviceStop", "serviceRestart"].map((id, i) => c.button({id, title: ["Start", "Stop", "Restart"][i]}))}));
-        if (e.type === "action_chosen" && e.action.startsWith("service")) operation = spinnet.tools.startTask.operation({tool: "homebrew", operation: e.action, name: selected.name}, {notify: true});
+        if (e.type === "action_chosen" && e.action.startsWith("service")) operation = startTask({tool: "homebrew", operation: e.action, name: selected.name}, {notify: true});
       }
       if (s.mode === "taps") {
         controls.push(c.text({id: "tap-info", text: [selected.remote, selected.trusted ? "Trusted" : "Not trusted", String(selected.formula_count || 0) + " tools", String(selected.cask_count || 0) + " Apps"].filter(Boolean).join(" · ")}));
@@ -540,7 +558,7 @@ const entryCommand = "brew.installed";
         const tapStart = Math.min(s.tapStart || 0, Math.max(0, tapPackages.length - 1));
         controls.push(c.list({id: "tap-packages", total: tapPackages.length, start: tapStart, items: tapPackages.slice(tapStart, tapStart + (s.tapCount || 80)).map((p, i) => c.item({id: packageID(p), text: p.name, title: p.name, subtitle: p.kind === "cask" ? "App" : "Command-line Tool"})), emptyText: "Loading or no packages", actions: [c.itemAction({id: "tap-package", title: "Show Package Details", default: true})]}));
         
-        if (e.type === "action_chosen" && ["trust", "untrust", "untap"].includes(e.action)) operation = spinnet.tools.startTask.operation({tool: "homebrew", operation: e.action, tap: selected.name}, {notify: true});
+        if (e.type === "action_chosen" && ["trust", "untrust", "untap"].includes(e.action)) operation = startTask({tool: "homebrew", operation: e.action, tap: selected.name}, {notify: true});
       }
       if (s.mode === "doctor") {
         controls.push(c.text({id: "doctor-explanation", title: "What Was Found", text: selected.text || "Finding"}));
@@ -555,7 +573,7 @@ const entryCommand = "brew.installed";
         }
         if (e.type === "action_chosen" && e.action.startsWith("fix-")) {
           const repair = (selected.repairs || [])[Number(e.action.slice(4))];
-          if (repair) operation = spinnet.tools.startTask.operation({tool: "homebrew", operation: "doctorFix", target: repair.target}, {notify: true});
+          if (repair) operation = startTask({tool: "homebrew", operation: "doctorFix", target: repair.target}, {notify: true});
         }
         if (selected.truncated) controls.push(c.text({id: "doctor-detail-incomplete", text: "This finding reached a result limit. Some text or commands were omitted; incomplete commands cannot be copied. Review the complete report in Terminal with brew doctor."}));
         controls.push(c.text({id: "doctor-guidance", text: (selected.repairs || []).length ? "Available repairs open a Host confirmation before running. Terminal commands above are copied only; review them before using them." : "This finding needs manual review. No automatic repair is available. Terminal commands, if shown, are copied only."}));
@@ -585,7 +603,7 @@ const entryCommand = "brew.installed";
         if (s.adoption && s.adoptionRequest && s.adoptionRequest.target === selected.target && s.adoptionRequest.name === s.caskName) {
           controls.push(c.text({id: "adoption-summary", text: s.adoption.summary || "Host-reviewed adoption is ready."}));
           controls.push(c.actions({id: "adopt-control", actions: [c.button({id: "adopt", title: "Adopt This App"})]}));
-          if (e.type === "action_chosen" && e.action === "adopt") operation = spinnet.tools.startTask.operation({tool: "homebrew", operation: "adopt", target: s.adoption.target}, {notify: true});
+          if (e.type === "action_chosen" && e.action === "adopt") operation = startTask({tool: "homebrew", operation: "adopt", target: s.adoption.target}, {notify: true});
         }
       }
 
@@ -631,14 +649,14 @@ const entryCommand = "brew.installed";
         if (selected.upgrade_available === true) {
           controls.push(c.text({id: "security-upgrade-help", text: "An eligible upgrade is available. It has not been verified to fix these advisories; review the upstream guidance before upgrading.", style: {color: "secondary"}}));
           controls.push(c.actions({id: "security-upgrade", actions: [c.button({id: "upgrade-security", title: "Review Available Package Upgrade"})]}));
-          if (e.type === "action_chosen" && e.action === "upgrade-security") operation = spinnet.tools.startTask.operation({tool: "homebrew", operation: "upgrade", kind: "formula", name: selected.name}, {notify: true});
+          if (e.type === "action_chosen" && e.action === "upgrade-security") operation = startTask({tool: "homebrew", operation: "upgrade", kind: "formula", name: selected.name}, {notify: true});
         }
       }
     } else if (s.mode === "cleanup") {
       controls.push(c.choiceField({id: "pruneDays", title: "Remove Eligible Downloads Older Than", choices: ["120", "30", "all"], choiceTitles: ["120 Days", "30 Days", "All Ages"], value: s.pruneDays || "120"}));
       controls.push(c.text({id: "cleanup-warning", text: "Clean Up removes eligible cached downloads and old package versions. To uninstall unused dependencies, open Remove Unused Dependencies from Homebrew Home."}));
       controls.push(c.actions({id: "cleanup-controls", actions: [c.button({id: "cleanup", title: "Clean Up"}), c.button({id: "clear-cache", title: "Clear Plugin Cache"})]}));
-      if (e.type === "action_chosen" && e.action === "cleanup") operation = spinnet.tools.startTask.operation(Object.assign({tool: "homebrew", operation: "cleanup"}, s.pruneDays === "all" ? {pruneAll: true} : {days: Number(s.pruneDays || 120)}), {notify: true});
+      if (e.type === "action_chosen" && e.action === "cleanup") operation = startTask(Object.assign({tool: "homebrew", operation: "cleanup"}, s.pruneDays === "all" ? {pruneAll: true} : {days: Number(s.pruneDays || 120)}), {notify: true});
       if (e.type === "action_chosen" && e.action === "clear-cache") { spinnet.storage.clear(); s.packages = []; s.manageResult = null; s.manageMessage = "Plugin Cache Cleared"; controls.push(c.text({id: "cache-result", text: s.manageMessage})); }
     } else if (s.mode === "activity") {
       controls.push(c.activityList({id: "own-activities", emptyText: "No Homebrew work is running"}));
@@ -648,7 +666,7 @@ const entryCommand = "brew.installed";
       if (s.mode === "taps") {
         controls.push(c.textField({id: "tapName", title: "Add a Tap", placeholder: "owner/repository", value: s.tapName || ""}));
         controls.push(c.actions({id: "add-tap", actions: [c.button({id: "tap", title: "Review Adding Tap"})]}));
-        if (e.type === "action_chosen" && e.action === "tap" && /^[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_.-]*$/.test(s.tapName || "")) operation = spinnet.tools.startTask.operation({tool: "homebrew", operation: "tap", tap: s.tapName}, {notify: true});
+        if (e.type === "action_chosen" && e.action === "tap" && /^[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_.-]*$/.test(s.tapName || "")) operation = startTask({tool: "homebrew", operation: "tap", tap: s.tapName}, {notify: true});
       }
       let items = (s.mode === "vulnerabilities" ? securityRecords(latest) : latest.services || latest.taps || latest.findings || latest.applications || []).map((p, position) => Object.assign({position}, p));
       let managementSections;
@@ -688,13 +706,6 @@ const entryCommand = "brew.installed";
   if (e.type === "action_chosen" && e.action === "package-options-back") { s.packageOptions = false; s.zap = "off"; s.analyticsInput = null; }
   if (s.detail) {
     const pkg = s.detail;
-    if (e.type === "action_chosen" && e.action === "check-updates") {
-      s.catalogUpdateBaseline = (spinnet.activities.list() || []).map(task => task.id);
-      s.catalogUpdateWaiting = true;
-      spinnet.storage.set({key: "catalog-update", value: {baseline: s.catalogUpdateBaseline}});
-      s.detailMessage = "Check for Updates changes Homebrew itself, all taps and package catalogs after Host Confirmation.";
-      operation = spinnet.tools.startTask.operation({tool: "homebrew", operation: "update"}, {id: "catalog-update", notify: true});
-    }
     const detailSourceID = "detail" + (s.detailRefresh ? "-" + s.detailRefresh : "");
     if (e.type === "source_delivered" && e.source === detailSourceID) {
       s.detailLoaded = true;
@@ -825,7 +836,7 @@ const entryCommand = "brew.installed";
     else content.push(c.text({id: "popularity-kind", text: "Choose Tools or Apps to request a popularity window."}));
     if (s.popularityMessage) content.push(c.text({id: "popularity-read-status", text: s.popularityMessage}));
   }
-  content.push(c.actions({id: "refresh-controls", actions: [c.button({id: "refresh", title: "Refresh"}), c.button({id: "filter-options", title: s.filterOptions ? "Hide Filter Options" : "Filter Options…"})]}));
+  content.push(c.actions({id: "refresh-controls", actions: [c.button({id: "check-updates", title: "Update Homebrew Catalog…"}), c.button({id: "refresh", title: "Refresh List"}), c.button({id: "filter-options", title: s.filterOptions ? "Hide Filter Options" : "Filter Options…"})]}));
   content.push(c.text({id: "hint", text: s.message || (s.loading ? "Loading packages…" : s.mode === "search" && !validQuery ? "Type at least two lowercase letters or numbers to find packages." : s.truncated ? "Showing " + allPackages.length + " bounded results. Narrow the search or filter to see more." : "Choose a package to see details.")}));
   if (s.mode === "outdated") {
     content.push(c.text({id: "upgrade-review", text: "Eligible packages start selected, up to 50 per kind. Pinned packages are locked until explicitly unpinned. Selected tools and Apps run as separate confirmed Tasks; Upgrade All resolves every eligible package in the Host."}));

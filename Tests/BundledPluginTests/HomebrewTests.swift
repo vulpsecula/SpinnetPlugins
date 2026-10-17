@@ -6,6 +6,51 @@ import SpinnetCore
 import SpinnetPluginTestKit
 
 final class HomebrewTests: XCTestCase {
+    func testNewUpgradeOpensItsOwnProgressAndRendersIntermediateLogs() throws {
+        let helper = try PluginTestHelper(); defer { helper.shutdown() }
+        let plugin = try plugin()
+        let oldID = "activity_00000000000000000000000000000001"
+        let newID = "activity_00000000000000000000000000000002"
+        let old: JSONValue = .object(["id": .string(oldID), "kind": .string("task"), "name": .string("Previous task"),
+            "status": .string("ended"), "result": .object(["outcome": .string("completed")])])
+        let initial: JSONValue = .object(["detail": .object(["kind": .string("formula"), "name": .string("wget"),
+            "installed_version": .string("1"), "version": .string("2"), "outdated": .bool(true)]), "detailLoaded": .bool(true)])
+        let requested = try helper.run(.init("brew.open", event: .pageActionChosen(page: "homebrew-detail", action: "upgrade", values: .null, selection: .null), state: initial),
+            of: plugin, answering: services(operations: ["activities.list": .value(.array([old]))])).answer()
+        let started = try helper.run(.init("brew.open", event: .operationFinished(id: "upgrade", perform: "tools.startTask", outcome: .succeeded), state: requested.state),
+            of: plugin, answering: services()).answer()
+        guard case .progress(let waiting)? = started.page?.component("pending-task-progress") else { return XCTFail("Show progress while the first task snapshot is pending") }
+        XCTAssertEqual(waiting.state, .running)
+        let pending = try helper.run(.init("brew.open", event: .sourceDelivered(page: try XCTUnwrap(started.page?.id), source: "activities", sequence: 1, result: .array([old]), failure: nil), state: started.state),
+            of: plugin, answering: services()).answer()
+        XCTAssertNil(pending.page?.component("progress-" + oldID), "Do not select an old completed task while waiting for admission")
+        let task: JSONValue = .object(["id": .string(newID), "kind": .string("task"), "name": .string("Upgrade wget"),
+            "status": .string("running"), "stage": .string("fetching"), "log": .array([.string("Downloading wget")])])
+        let first = try helper.run(.init("brew.open", event: .sourceDelivered(page: try XCTUnwrap(pending.page?.id), source: "activities", sequence: 2, result: .array([task, old]), failure: nil), state: pending.state),
+            of: plugin, answering: services()).answer()
+        guard case .progress(let progress)? = first.page?.component("progress-" + newID) else { return XCTFail("The newly admitted upgrade must open its progress before it ends") }
+        XCTAssertEqual(progress.state, .running)
+        let updated: JSONValue = .object(["id": .string(newID), "kind": .string("task"), "name": .string("Upgrade wget"),
+            "status": .string("running"), "stage": .string("installing"), "elapsed_seconds": .number(2),
+            "log": .array([.string("Downloading wget"), .string("Pouring wget")])])
+        let second = try helper.run(.init("brew.open", event: .sourceDelivered(page: try XCTUnwrap(first.page?.id), source: "activities", sequence: 3, result: .array([updated, old]), failure: nil), state: first.state),
+            of: plugin, answering: services()).answer()
+        guard case .text(let log)? = second.page?.component("log-" + newID) else { return XCTFail("Expected live task log") }
+        XCTAssertTrue(log.text.contains("Pouring wget"))
+        XCTAssertNil(second.operation, "Live task delivery must never replay a mutation")
+    }
+
+    func testHomeAndAvailableUpdatesCanUpdateCatalogsWithoutChoosingAPackage() throws {
+        let helper = try PluginTestHelper(); defer { helper.shutdown() }
+        for command in ["brew.open", "brew.outdated"] {
+            let page = PluginTestPage(command, of: try plugin(), helper: helper,
+                                      answering: services(operations: ["activities.list": .value(.array([]))]))
+            try page.open()
+            XCTAssertNoThrow(try page.click("check-updates"), "The global update must be visible from \(command)")
+            XCTAssertEqual(page.performed.last?.input, .object(["tool": .string("homebrew"), "operation": .string("update")]))
+        }
+    }
+
     private func securityAction(_ action: String, from answer: PluginScriptAnswer, helper: PluginTestHelper, plugin: PluginUnderTest, values: JSONValue = .null) throws -> PluginScriptAnswer {
         try helper.run(.init("brew.vulnerabilities", event: .pageActionChosen(page: try XCTUnwrap(answer.page?.id), action: action, values: values, selection: .null), state: answer.state), of: plugin, answering: services()).answer()
     }
@@ -320,7 +365,7 @@ final class HomebrewTests: XCTestCase {
 
     func testHomeAndPackageDetailsUseTheDeclaredResponsiveLayoutAndKeepAllDestinationsReachable() throws {
         let plugin = try plugin(), helper = try PluginTestHelper(); defer { helper.shutdown() }
-        XCTAssertEqual(plugin.manifest.apiLevel, 3)
+        XCTAssertEqual(plugin.manifest.apiLevel, 4)
         XCTAssertTrue(plugin.manifest.candidateContracts.isEmpty)
         let page = PluginTestPage("brew.open", of: plugin, helper: helper, answering: services())
         try page.open()
@@ -585,7 +630,7 @@ final class HomebrewTests: XCTestCase {
     }
     override func tearDownWithError() throws { try? FileManager.default.removeItem(at: storageDirectory) }
     private func services(operations: [String: RecordedHostServices.Answer] = [:]) -> RecordedHostServices {
-        RecordedHostServices(operations: operations, storage: storage)
+        RecordedHostServices(operations: ["activities.list": .value(.array([]))].merging(operations) { _, provided in provided }, storage: storage)
     }
     private func plugin() throws -> PluginUnderTest {
         try PluginUnderTest(named: "Homebrew.spinnetplugin", origin: .bundled)
@@ -1171,7 +1216,7 @@ extension HomebrewTests {
         let manifest = try installer.install(from: source.package.rootURL)
         let installed = try XCTUnwrap(registry.package(for: manifest.id))
         XCTAssertEqual(installed.origin, .installed)
-        XCTAssertEqual(manifest.apiLevel, 3)
+        XCTAssertEqual(manifest.apiLevel, 4)
         XCTAssertTrue(manifest.candidateContracts.isEmpty)
         XCTAssertEqual(manifest.commands.count, 14)
         let filenames = try FileManager.default.contentsOfDirectory(atPath: source.package.rootURL.path)
