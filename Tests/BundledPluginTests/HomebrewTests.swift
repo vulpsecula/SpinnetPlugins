@@ -234,4 +234,14 @@ final class HomebrewTests: XCTestCase {
         XCTAssertEqual(result.page?.collection?.emptyText, "All packages are up to date.")
         XCTAssertNil(result.operation)
     }
+    func testReopeningAnotherShortcutResetsOnlyItsCommandInputsWithoutRunningIt() throws {
+        let helper = try PluginTestHelper(); defer { helper.shutdown() }
+        let result = try readResult(helper, text: "wget\nfirefox\n")
+        let called = try render(helper, command: "brew.info", input: .object(["package": .string("wget")]), event: .called, state: result.state)
+        XCTAssertEqual(called.state.value(atPointer: "/command"), .string("info"))
+        XCTAssertEqual(called.state.value(atPointer: "/package"), .string("wget"))
+        XCTAssertEqual(called.page?.reset, .components(["command", "package"]))
+        XCTAssertEqual(called.page?.collection?.items.map(\.title), ["wget", "firefox"])
+        XCTAssertNil(called.operation); XCTAssertTrue(called.page?.sources.isEmpty == true)
+    }
 }

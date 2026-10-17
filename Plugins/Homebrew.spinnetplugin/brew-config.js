@@ -60,7 +60,10 @@ const entryCommand = "brew.config";
   }
   const reset = [];
   const busy = s.read || s.taskRunning || s.waitingTask;
-  if (e.type === "called" && !busy) Object.assign(s,{command:mode,package:initial.package || "",message:"",adoption:null});
+  if (e.type === "called" && !busy) {
+    Object.assign(s,{command:mode,package:initial.package || "",message:"",adoption:null});
+    reset.push("command","package");
+  }
   if (!busy) for (const key of ["command","package","kind","serviceAction"]) if (e.values && typeof e.values[key] === "string" && s[key] !== e.values[key]) { s[key] = e.values[key]; s.adoption = null; }
   if (e.values && ["results","raw"].includes(e.values.display)) s.display = e.values.display;
   const filterValue = e.values && e.values["filter-" + s.serial];
