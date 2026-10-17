@@ -6,6 +6,48 @@ import SpinnetCore
 import SpinnetPluginTestKit
 
 final class HomebrewTests: XCTestCase {
+    func testPrimaryNavigationAndRunningTaskSummaryStayAvailableOutsideTaskDetails() throws {
+        let helper = try PluginTestHelper(); defer { helper.shutdown() }
+        let opened = try helper.run(.init("brew.doctor"), of: plugin(), answering: services()).answer()
+        XCTAssertTrue(opened.page?.sources.contains { $0.perform == "activities.list" && $0.every == 1 } == true)
+        guard case .actions(_, let actions)? = opened.page?.component("home-navigation") else { return XCTFail("Expected primary navigation") }
+        XCTAssertTrue(Set(actions.compactMap { if case .event(let id, _) = $0.kind { return id }; return nil }).isSuperset(of: ["go-installed", "go-outdated", "go-search", "task-details"]))
+        let active: JSONValue = .object(["id": .string("activity_00000000000000000000000000000003"), "kind": .string("task"),
+            "name": .string("Upgrade example"), "status": .string("running"), "stage": .string("fetching")])
+        let updated = try helper.run(.init("brew.doctor", event: .sourceDelivered(page: try XCTUnwrap(opened.page?.id), source: "activities", sequence: 1,
+            result: .array([active]), failure: nil), state: opened.state), of: plugin(), answering: services()).answer()
+        guard case .text(let summary)? = updated.page?.component("active-task-summary") else { return XCTFail("Keep the active task visible while browsing") }
+        XCTAssertTrue(summary.text.contains("Upgrade example"))
+        let task = try helper.run(.init("brew.doctor", event: .pageActionChosen(page: try XCTUnwrap(updated.page?.id), action: "task-details", values: .null, selection: .null), state: updated.state), of: plugin(), answering: services()).answer()
+        XCTAssertEqual(task.page?.id, "homebrew-task-activity_00000000000000000000000000000003")
+        XCTAssertNil(task.operation)
+    }
+
+    func testPerDownloadBarsUseActualProgressWithoutClaimingOverallUpgradePercentage() throws {
+        let helper = try PluginTestHelper(); defer { helper.shutdown() }
+        let id = "activity_00000000000000000000000000000004"
+        let state: JSONValue = .object(["progress": .bool(true), "taskID": .string(id)])
+        func render(_ stage: String, _ lines: [String]) throws -> PluginScriptAnswer {
+            let task: JSONValue = .object(["id": .string(id), "kind": .string("task"), "name": .string("Upgrade example"),
+                "status": .string("running"), "stage": .string(stage), "log": .array(lines.map(JSONValue.string))])
+            return try helper.run(.init("brew.open", event: .sourceDelivered(page: "homebrew-progress", source: "activities", sequence: 1,
+                result: .array([task]), failure: nil), state: state), of: plugin(), answering: services()).answer()
+        }
+        let lines = ["example #### Downloading 5.0MB/10.0MB", "################ 25.0%"]
+        let running = try render("fetching", lines)
+        guard case .progress(let overall)? = running.page?.component("progress-" + id),
+              case .progress(let download)? = running.page?.component("download-progress-0"),
+              case .progress(let curl)? = running.page?.component("download-progress-1") else { return XCTFail("Expected distinct task and download bars") }
+        XCTAssertNil(overall.value)
+        XCTAssertEqual(download.value, 0.5)
+        XCTAssertEqual(curl.value, 0.25)
+        XCTAssertTrue(download.status?.contains("Download") == true)
+        let installing = try render("installing", lines)
+        XCTAssertNil(installing.page?.component("download-progress-0"), "Old download output must not become installation progress")
+        XCTAssertNil(try render("fetching", ["example Downloading 1MB/0MB", "bad ### 500.0%", "release 50% complete"]).page?.component("download-progress-0"))
+        XCTAssertNil(running.operation)
+    }
+
     func testNewUpgradeOpensItsOwnProgressAndRendersIntermediateLogs() throws {
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
         let plugin = try plugin()
@@ -131,7 +173,7 @@ final class HomebrewTests: XCTestCase {
         let plugin = try plugin(), helper = try PluginTestHelper(); defer { helper.shutdown() }
         let opened = try helper.run(.init("brew.vulnerabilities"), of: plugin, answering: services()).answer()
         let failed = try helper.run(.init("brew.vulnerabilities", event: .sourceDelivered(page: "homebrew-security-select", source: try XCTUnwrap(opened.page?.sources.first?.id), sequence: 1, result: nil, failure: .init(category: .hostServiceFailed, message: "Homebrew unavailable")), state: opened.state), of: plugin, answering: services()).answer()
-        XCTAssertTrue(failed.page?.sources.isEmpty == true)
+        XCTAssertTrue(failed.page?.nonActivitySources.isEmpty == true)
         let retry = try securityAction("retry-security-inventory", from: failed, helper: helper, plugin: plugin)
         XCTAssertNotEqual(retry.page?.sources.first?.id, opened.page?.sources.first?.id)
         let stale = try securityReport(.object(["packages": .array([.object(["kind": .string("formula"), "name": .string("stale")])])]), into: retry, helper: helper, plugin: plugin, source: try XCTUnwrap(opened.page?.sources.first?.id))
@@ -140,7 +182,7 @@ final class HomebrewTests: XCTestCase {
         let chosen = try securityAction("select-security", from: loaded, helper: helper, plugin: plugin)
         let started = try securityAction("start-security", from: chosen, helper: helper, plugin: plugin)
         let unsupported = try securityReport(.object(["available": .bool(false), "reason": .string("requires_homebrew_7")]), into: started, helper: helper, plugin: plugin)
-        XCTAssertTrue(unsupported.page?.sources.isEmpty == true)
+        XCTAssertTrue(unsupported.page?.nonActivitySources.isEmpty == true)
         XCTAssertTrue(String(decoding: try JSONEncoder().encode(unsupported.pageJSON), as: UTF8.self).contains("cannot perform Security Check"))
         guard case .text(let coverage)? = unsupported.page?.component("security-coverage") else { return XCTFail("Expected unsupported coverage") }
         XCTAssertEqual(coverage.title, "Incomplete Check")
@@ -160,7 +202,7 @@ final class HomebrewTests: XCTestCase {
             XCTAssertLessThan(try JSONEncoder().encode(answer.state).count, 65_536)
             XCTAssertLessThan(try JSONEncoder().encode(answer.pageJSON).count, 262_144)
         }
-        XCTAssertTrue(answer.page?.sources.isEmpty == true)
+        XCTAssertTrue(answer.page?.nonActivitySources.isEmpty == true)
         guard case .text(let coverage)? = answer.page?.component("security-coverage") else { return XCTFail("Expected bounded report coverage") }
         XCTAssertEqual(coverage.title, "Incomplete Check")
         XCTAssertTrue(coverage.text.contains("120 checked"))
@@ -174,12 +216,12 @@ final class HomebrewTests: XCTestCase {
         let started = try securityAction("start-security", from: chosen, helper: helper, plugin: plugin)
         let next = try securityReport(.object(["checked": .number(20), "findings": .array([]), "skipped": .array([])]), into: started, helper: helper, plugin: plugin)
         let failed = try helper.run(.init("brew.vulnerabilities", event: .sourceDelivered(page: try XCTUnwrap(next.page?.id), source: try XCTUnwrap(next.page?.sources.first?.id), sequence: 1, result: nil, failure: .init(category: .hostServiceFailed, message: "OSV unavailable")), state: next.state), of: plugin, answering: services()).answer()
-        XCTAssertTrue(failed.page?.sources.isEmpty == true)
+        XCTAssertTrue(failed.page?.nonActivitySources.isEmpty == true)
         let retry = try securityAction("retry-security", from: failed, helper: helper, plugin: plugin)
         XCTAssertEqual(retry.page?.sources.first?.input.value(atPointer: "/names"), .array([.string("tool20")]))
         XCTAssertNotEqual(retry.page?.sources.first?.id, next.page?.sources.first?.id)
         let stopped = try securityAction("stop-security", from: retry, helper: helper, plugin: plugin)
-        XCTAssertTrue(stopped.page?.sources.isEmpty == true)
+        XCTAssertTrue(stopped.page?.nonActivitySources.isEmpty == true)
         XCTAssertNil(stopped.operation)
         let stale = try securityReport(.object(["checked": .number(1), "findings": .array([])]), into: stopped, helper: helper, plugin: plugin, source: try XCTUnwrap(retry.page?.sources.first?.id))
         guard case .text(let coverage)? = stale.page?.component("security-coverage") else { return XCTFail("Expected retained coverage") }
@@ -210,7 +252,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertEqual(stale.page?.collection?.total, 1)
         // The selected package disappeared before this read. It cannot count as clean.
         let done = try securityReport(.object(["checked": .number(0), "findings": .array([]), "skipped": .array([])]), into: stale, helper: helper, plugin: plugin)
-        XCTAssertTrue(done.page?.sources.isEmpty == true)
+        XCTAssertTrue(done.page?.nonActivitySources.isEmpty == true)
         guard case .text(let coverage)? = done.page?.component("security-coverage") else { return XCTFail("Expected aggregate coverage") }
         XCTAssertTrue(coverage.text.contains("20 checked"))
         XCTAssertTrue(coverage.text.contains("1 not accounted for"))
@@ -229,7 +271,7 @@ final class HomebrewTests: XCTestCase {
         ])])
         let loaded = try helper.run(.init("brew.vulnerabilities", event: .sourceDelivered(page: try XCTUnwrap(opened.page?.id), source: try XCTUnwrap(opened.page?.sources.first?.id), sequence: 1, result: result, failure: nil), state: opened.state), of: plugin, answering: services()).answer()
         XCTAssertEqual(loaded.page?.collection?.items.map(\.title), ["wget"])
-        XCTAssertTrue(loaded.page?.sources.isEmpty == true)
+        XCTAssertTrue(loaded.page?.nonActivitySources.isEmpty == true)
         let row = try XCTUnwrap(loaded.page?.collection?.items.first)
         let selected = try helper.run(.init("brew.vulnerabilities", event: .itemAction(page: try XCTUnwrap(loaded.page?.id), collection: "security-packages", action: "toggle-security", item: .init(id: row.id, section: nil, text: row.text ?? row.title), values: .null), state: loaded.state), of: plugin, answering: services()).answer()
         XCTAssertEqual(selected.page?.collection?.items.first?.marks, ["security_selected"])
@@ -248,7 +290,7 @@ final class HomebrewTests: XCTestCase {
             guard case .text(let coverage)? = answer.page?.component("security-coverage") else { return XCTFail("Expected selected coverage") }
             XCTAssertEqual(coverage.title, count == 20 ? "Check Complete" : "Checking Selected Tools…")
             XCTAssertTrue(coverage.text.contains("20/\(count) processed"))
-            XCTAssertEqual(answer.page?.sources.count, count == 20 ? 0 : 1)
+            XCTAssertEqual(answer.page?.nonActivitySources.count, count == 20 ? 0 : 1)
         }
     }
 
@@ -327,7 +369,7 @@ final class HomebrewTests: XCTestCase {
         let detail = try helper.run(.init("brew.vulnerabilities", event: .itemAction(page: try XCTUnwrap(loaded.page?.id), collection: "management", action: "manage-details", item: .init(id: row.id, section: "skipped", text: row.text ?? row.title), values: .null), state: loaded.state), of: plugin, answering: services()).answer()
         XCTAssertNotNil(detail.page?.component("security-skip-reason"))
         XCTAssertNil(detail.page?.component("security-coverage"))
-        XCTAssertTrue(detail.page?.sources.isEmpty == true)
+        XCTAssertTrue(detail.page?.nonActivitySources.isEmpty == true)
         let selection = try securityAction("choose-security", from: loaded, helper: helper, plugin: plugin)
         let next = try securityAction("start-security", from: selection, helper: helper, plugin: plugin)
         XCTAssertEqual(next.page?.collection?.total, 0)
@@ -572,7 +614,7 @@ final class HomebrewTests: XCTestCase {
         let page = PluginTestPage("brew.open", of: plugin, helper: helper, answering: services())
         try page.open()
         XCTAssertEqual(page.page?.id, "homebrew-home")
-        XCTAssertNil(page.pageJSON?.value(atPointer: "/sources"))
+        XCTAssertTrue(page.page?.nonActivitySources.isEmpty == true)
         XCTAssertNotNil(page.page?.component("destinations"))
         XCTAssertTrue(page.page?.collection?.items.contains { $0.id == "installed" } == true)
         XCTAssertTrue(page.page?.collection?.items.contains { $0.id == "activity" } == true)
@@ -643,7 +685,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(page.page?.component("query"))
         try page.choose("search", in: "browse")
         XCTAssertEqual(page.state.value(atPointer: "/mode"), .string("search"))
-        XCTAssertNil(page.pageJSON?.value(atPointer: "/sources"))
+        XCTAssertTrue(page.page?.nonActivitySources.isEmpty == true)
         try page.type("wget", into: "query")
         XCTAssertEqual(page.pageJSON?.value(atPointer: "/sources/0/input/query"), .string("wget"))
     }
@@ -752,7 +794,7 @@ final class HomebrewTests: XCTestCase {
         let state: JSONValue = .object(["mode": .string("adopt"), "manageDetail": .object(["name": .string("Firefox"), "target": .string("app_123"), "version": .string("1")]), "caskName": .string("firefox")])
         let preview = helper.run(PluginTestInvocation("brew.open", event: .pageActionChosen(page: "homebrew-manage-adopt", action: "preview-adoption", values: .null, selection: .null), state: state), of: plugin, answering: services())
         let answer = try preview.answer()
-        XCTAssertEqual(answer.page?.sources.last?.input.value(atPointer: "/target"), .string("app_123"))
+        XCTAssertEqual(answer.page?.nonActivitySources.last?.input.value(atPointer: "/target"), .string("app_123"))
         let beforeReview = helper.run(PluginTestInvocation("brew.open", event: .pageActionChosen(page: "homebrew-manage-adopt", action: "adopt", values: .null, selection: .null), state: state), of: plugin, answering: services())
         XCTAssertNil(try beforeReview.answer().operation)
     }
@@ -889,7 +931,7 @@ extension HomebrewTests {
         XCTAssertTrue(text.contains("legacy"))
         XCTAssertTrue(text.contains("Incomplete"))
         XCTAssertTrue(text.contains("Choose Tools"))
-        XCTAssertTrue(answer.page?.sources.isEmpty == true)
+        XCTAssertTrue(answer.page?.nonActivitySources.isEmpty == true)
     }
 
 }
@@ -1020,9 +1062,9 @@ extension HomebrewTests {
         let initial: JSONValue = .object(["mode": .string("installed"), "kind": .string("formula"), "sort": .string("popularity")])
         let packages: JSONValue = .object(["packages": .array([.object(["name": .string("wget"), "kind": .string("formula")]), .object(["name": .string("curl"), "kind": .string("formula")]), .object(["name": .string("unknown"), "kind": .string("formula")])])])
         let browse = try helper.run(PluginTestInvocation("brew.open", event: .sourceDelivered(page: "homebrew-browse", source: "packages", sequence: 1, result: packages, failure: nil), state: initial), of: plugin, answering: services()).answer()
-        XCTAssertEqual(browse.page?.sources.count, 1)
+        XCTAssertEqual(browse.page?.nonActivitySources.count, 1)
         let request = try helper.run(PluginTestInvocation("brew.open", event: .pageActionChosen(page: "homebrew-browse", action: "rank-packages", values: .null, selection: .null), state: browse.state), of: plugin, answering: services()).answer()
-        XCTAssertEqual(request.page?.sources.last?.input.value(atPointer: "/operation"), .string("packageAnalytics"))
+        XCTAssertEqual(request.page?.nonActivitySources.last?.input.value(atPointer: "/operation"), .string("packageAnalytics"))
         let result: JSONValue = .object(["rankings": .array([.object(["name": .string("wget"), "analytics": .object(["install": .object(["30d": .number(12)])])]), .object(["name": .string("curl"), "analytics": .object(["install": .object(["30d": .number(500)])])])])])
         let ranked = try helper.run(PluginTestInvocation("brew.open", event: .sourceDelivered(page: "homebrew-browse", source: "rankings", sequence: 1, result: result, failure: nil), state: request.state), of: plugin, answering: services()).answer()
         XCTAssertEqual(ranked.page?.collection?.items.first?.title, "curl")
@@ -1236,4 +1278,10 @@ extension HomebrewTests {
         XCTAssertEqual(answer.page?.id, "homebrew-home")
         XCTAssertNil(answer.operation)
     }
+}
+
+// Inventory/preview/security read assertions exclude the local task-status source
+// that now keeps the running-task summary current on every visible page.
+private extension PluginPage {
+    var nonActivitySources: [PluginPageSource] { sources.filter { $0.perform != "activities.list" } }
 }

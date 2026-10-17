@@ -83,7 +83,7 @@ const entryCommand = "brew.autoremove";
   if (pendingUpdate && !s.catalogUpdateWaiting) { s.catalogUpdateWaiting = true; s.catalogUpdateBaseline = pendingUpdate.baseline || []; }
   const watching = sources => {
     const list = (sources || []).slice();
-    if (s.catalogUpdateWaiting && !list.some(source => source.id === "activities")) list.push(spinnet.activities.list.source("activities", {every: 1, deliver: true}));
+    if (!list.some(source => source.id === "activities")) list.push(spinnet.activities.list.source("activities", {every: 1, deliver: true}));
     return list.length ? list : undefined;
   };
   const e = event || {};
@@ -102,7 +102,33 @@ const entryCommand = "brew.autoremove";
   }
   const modes = ["installed", "outdated", "search", "services", "taps", "vulnerabilities", "doctor", "adopt", "cleanup", "autoremove", "activity"];
   const modeTitles = ["Installed", "Updates", "Find Packages", "Services", "Taps", "Security Check", "Doctor", "Adopt Apps", "Clean Up", "Remove Unused Dependencies", "Activity"];
-  const homeNavigation = () => c.actions({id: "home-navigation", actions: [c.button({id: "home", title: "Homebrew Home"})].concat(s.progress ? [] : [c.button({id: "task-details", title: "Tasks and Logs"})])});
+  const activeTask = () => (s.tasks || []).find(task => task.kind === "task" && !task.result && task.status !== "ended");
+  const homeNavigation = () => {
+    const task = activeTask();
+    return c.column({id: "navigation-and-task", content: [
+      c.actions({id: "home-navigation", actions: [c.button({id: "home", title: "Homebrew Home"}),
+        c.button({id: "go-installed", title: "Installed"}), c.button({id: "go-outdated", title: "Updates"}),
+        c.button({id: "go-search", title: "Find Packages"})].concat(s.progress ? [] : [c.button({id: "task-details", title: "Tasks and Logs"})])}),
+      ...(task && !s.progress ? [c.text({id: "active-task-summary", text: task.name + " · " + (task.stage || "Running") + " · " + Math.floor(task.elapsed_seconds || 0) + "s", style: {color: "accent"}})] : [])
+    ]});
+  };
+  // Homebrew reports download bytes (and curl sometimes reports a percent).
+  // These bars describe individual downloads, never the whole upgrade.
+  const taskDownloads = task => {
+    if (task.result || ["installing", "linking", "finishing"].includes(task.stage)) return [];
+    const units = {B: 1, KB: 1000, MB: 1e6, GB: 1e9, TB: 1e12, KIB: 1024, MIB: 1048576, GIB: 1073741824, TIB: 1099511627776};
+    return (task.log || []).slice(-20).map(line => {
+      const bytes = line.match(/^(.*?)\s+Downloading\s+([0-9]+(?:\.[0-9]+)?)\s*([KMGT]?i?B)\/\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGT]?i?B)\s*$/i);
+      if (bytes) {
+        const received = Number(bytes[2]) * units[bytes[3].toUpperCase()], total = Number(bytes[4]) * units[bytes[5].toUpperCase()];
+        if (Number.isFinite(received) && Number.isFinite(total) && total > 0 && received <= total)
+          return {title: bytes[1].replace(/[# ]+$/, "").trim() || "Download", value: received / total, status: "Download · " + bytes[2] + bytes[3] + " / " + bytes[4] + bytes[5]};
+      }
+      const percent = line.match(/^\s*#+[# ]*\s+([0-9]+(?:\.[0-9]+)?)%\s*$/);
+      if (percent && Number(percent[1]) <= 100) return {title: "Download", value: Number(percent[1]) / 100, status: "Download · " + percent[1] + "%"};
+      return null;
+    }).filter(Boolean).slice(-8);
+  };
   const changeMode = mode => {
     if (s.mode === mode) return;
     const defaults = {filter: "", query: "", kind: "both", greedy: "off", hideDependencies: "off", sort: "catalogue", filterOptions: false, start: 0, count: 80};
@@ -169,7 +195,7 @@ const entryCommand = "brew.autoremove";
     else { s.awaitingTask = false; s.pendingTaskBaseline = null; s.detailMessage = "Task " + e.outcome + (e.reason ? ": " + e.reason : ""); if (s.mode === "autoremove") s.autoremoveTaskMessage = s.detailMessage; if (e.operation === "catalog-update") { s.catalogUpdateWaiting = false; spinnet.storage.remove("catalog-update"); } }
   }
   if (e.type === "action_chosen" && e.action === "browse") { s.progress = false; s.taskID = null; }
-  if (e.type === "action_chosen" && e.action === "task-details") { s.progress = true; s.taskID = null; }
+  if (e.type === "action_chosen" && e.action === "task-details") { s.progress = true; s.taskID = (activeTask() || {}).id || null; }
   if (e.type === "item_action" && e.action === "show-task" && (s.tasks || []).some(task => task.id === e.item.id && task.name === e.item.text)) s.taskID = e.item.id;
   if (e.type === "action_chosen" && e.action === "tasks-back") s.taskID = null;
   if (e.type === "load_range" && e.collection === "tasks") { s.taskStart = e.start; s.taskCount = Math.min(e.count, 80); }
@@ -217,6 +243,7 @@ const entryCommand = "brew.autoremove";
       ["activity", "Tasks and Logs", "Follow running work and review previous results.", "clock"]
     ];
     return spinnet.ui.showPage(spinnet.ui.page({id: "homebrew-home", title: "Homebrew", resizable: {minHeight: 360}, content: [
+      homeNavigation(),
       c.text({id: "intro", text: "What would you like to do?", style: {fontSize: 18, fontWeight: "semibold"}}),
       c.actions({id: "catalog-controls", actions: [c.button({id: "check-updates", title: "Update Homebrew Catalog…"})]}),
       c.text({id: "navigation-help", text: "Open a section with Return or a double-click. Changes are reviewed before they run.", style: {color: "secondary"}}),
@@ -247,6 +274,9 @@ const entryCommand = "brew.autoremove";
       content.push(c.actions({id: "tasks-navigation", actions: [c.button({id: "tasks-back", title: "Back to Tasks"})]}));
       const outcome = task.result && task.result.outcome;
       content.push(c.progress({id: "progress-" + task.id, title: task.name, status: task.stage + " · " + Math.floor(task.elapsed_seconds || 0) + "s" + (outcome ? " · " + outcome : ""), state: outcome === "completed" ? "succeeded" : outcome === "stopped" ? "cancelled" : outcome ? "failed" : task.status === "stopping" ? "cancelling" : "running", cancel: task.status === "running" ? {id: "cancel-" + task.id, title: "Stop"} : undefined}));
+      const downloads = taskDownloads(task);
+      for (let index = 0; index < downloads.length; index++) content.push(c.progress(Object.assign({id: "download-progress-" + index, state: task.status === "stopping" ? "cancelling" : "running"}, downloads[index])));
+      if (downloads.length) content.push(c.text({id: "download-scope", text: "Download progress is shown per file. Installation continues after downloading.", style: {color: "secondary"}}));
       content.push(c.text({id: "log-" + task.id, title: "Task Log", text: (task.log || []).join("\n") || (outcome ? "No log output was recorded." : "Waiting for Homebrew output…")}));
       content.push(c.text({id: "task-help", text: outcome ? "This task has ended. Viewing its result or log does not run it again." : "Stopping attempts to end this task. It does not undo changes already made.", style: {color: "secondary"}}));
     } else if (s.awaitingTask) {
@@ -847,7 +877,9 @@ const entryCommand = "brew.autoremove";
     }
     content.push(c.actions({id: "upgrade-controls", actions: buttons}));
   }
-  content.push(c.list({id: "packages", total: packages.length, start, sections: packageSections.length ? packageSections : undefined, items: items.map(p => c.item({id: packageID(p), text: p.name, title: p.title || p.name, subtitle: [p.name, p.kind === "cask" ? "App" : "Command-line Tool", p.installed_version ? "Installed " + p.installed_version : "", p.pinned ? "Pinned" : p.outdated ? "Update available" : ""].filter(Boolean).join(" · "), marks: s.selectedUpgrades[p.kind].includes(p.name) ? ["upgrade_selected"] : [], actions: p.outdated && !p.pinned ? ["details", "queue-upgrade"] : ["details"]})), emptyText: s.message ? "Could not load packages. See the message above." : s.loading ? "Loading packages…" : s.mode === "search" && !validQuery ? "Enter at least two characters to search." : s.mode === "outdated" && !allPackages.length ? "No updates found for this package selection." : s.filter && !packages.length ? "No matches. Try changing the filter." : "No packages found.", actions: [c.itemAction({id: "details", title: "Show Details", default: true}), c.itemAction({id: "queue-upgrade", title: "Select for Upgrade", toggle: "upgrade_selected"})]}));
+  content.push(c.text({id: "package-summary", text: packages.length + " packages" + (s.filter ? " matching this filter" : "") + (s.mode === "outdated" ? " · " + (s.selectedUpgrades.formula.length + s.selectedUpgrades.cask.length) + " selected for upgrade" : ""), style: {color: "secondary"}}));
+  if (s.mode === "outdated") content.push(c.text({id: "catalog-help", text: "Update Homebrew Catalog fetches the latest package information. Refresh List checks the current local catalog.", style: {color: "secondary"}}));
+  content.push(c.list({id: "packages", total: packages.length, start, sections: packageSections.length ? packageSections : undefined, items: items.map(p => c.item({id: packageID(p), text: p.name, title: p.title || p.name, subtitle: [p.name, p.kind === "cask" ? "App" : "Command-line Tool", p.installed_version ? (p.outdated && p.version ? p.installed_version + " → " + p.version : "Installed " + p.installed_version) : p.version || "", p.pinned ? "Pinned" : p.outdated ? "Update available" : ""].filter(Boolean).join(" · "), marks: s.selectedUpgrades[p.kind].includes(p.name) ? ["upgrade_selected"] : [], actions: p.outdated && !p.pinned ? ["details", "queue-upgrade"] : ["details"]})), emptyText: s.message ? "Could not load packages. See the message above." : s.loading ? "Loading packages…" : s.mode === "search" && !validQuery ? "Enter at least two characters to search." : s.mode === "outdated" && !allPackages.length ? "No updates found for this package selection." : s.filter && !packages.length ? "No matches. Try changing the filter." : "No packages found.", actions: [c.itemAction({id: "details", title: "Show Details", default: true}), c.itemAction({id: "queue-upgrade", title: "Select for Upgrade", toggle: "upgrade_selected"})]}));
   const page = {id: "homebrew-browse-" + s.mode, title: modeTitles[modes.indexOf(s.mode)], resizable: {minHeight: 360}, content};
   if (s.mode !== "search" || validQuery) page.sources = [spinnet.tools.read.source(sourceID("packages"), request, {deliver: true})];
   if (s.popularityInput) page.sources = (page.sources || []).concat([spinnet.tools.read.source("rankings", s.popularityInput, {deliver: true})]);
