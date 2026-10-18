@@ -63,7 +63,7 @@
     s.kind = "both"; s.notice = ""; s.output = ""; s.truncated = false; s.report = "doctor";
     reset.push("section","query-" + section,"kind","report");
     s.error = "";
-    if (["list","search","outdated","upgrade","adopt","tap"].includes(section)) startTask({operation:"refreshCatalog"},"Updating Homebrew Catalog");
+    if (["outdated","upgrade","adopt","tap"].includes(section)) startTask({operation:"refreshCatalog"},"Updating Homebrew Catalog");
     else refresh();
   }
   function finishCatalogRefresh(useLocal) {

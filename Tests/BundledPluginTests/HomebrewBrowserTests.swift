@@ -76,12 +76,12 @@ final class HomebrewTests: XCTestCase {
 
     func testTenEntrypointsRefreshCatalogBeforeRelatedReads() throws {
         let manifest = try plugin().manifest
-        XCTAssertEqual(manifest.version, "2.5.1"); XCTAssertEqual(manifest.apiLevel, 7)
+        XCTAssertEqual(manifest.version, "2.5.2"); XCTAssertEqual(manifest.apiLevel, 7)
         XCTAssertEqual(manifest.commands.count, 10)
         XCTAssertNil(manifest.scope(for: .controlExternalApp))
         for command in manifest.commands {
             let answer = try render(command.id.rawValue)
-            if ["brew.installed","brew.search","brew.outdated","brew.upgrade","brew.adopt","brew.taps"].contains(command.id.rawValue) {
+            if ["brew.outdated","brew.upgrade","brew.adopt","brew.taps"].contains(command.id.rawValue) {
                 XCTAssertEqual(answer.operation?.input, .object(["tool": .string("homebrew"), "operation": .string("refreshCatalog")]))
                 XCTAssertFalse(answer.page?.sources.contains { $0.perform == "tools.read" } == true)
                 let completed = try finishCatalogRefresh(answer)
@@ -458,7 +458,7 @@ final class HomebrewTests: XCTestCase {
     }
     func testCatalogFailureRequiresExplicitRetryOrDisclosedLocalRead() throws {
         for outcome in ["failed","stopped","unknown"] {
-            let failed = try completeCatalog(render("brew.search"),outcome:outcome)
+            let failed = try completeCatalog(render("brew.outdated"),outcome:outcome)
             XCTAssertEqual(failed.page?.id,"homebrew-task")
             XCTAssertEqual(try text(failed,"task-output"),"Catalog fixture output")
             XCTAssertTrue(failed.page?.sources.isEmpty == true)
@@ -466,7 +466,7 @@ final class HomebrewTests: XCTestCase {
             let local = try press(failed,"local-catalog")
             XCTAssertNil(local.operation)
             XCTAssertTrue(try text(local,"notice").contains("last locally available"))
-            XCTAssertEqual(try source(local).input.value(atPointer:"/operation"),.string("installed"))
+            XCTAssertEqual(try source(local).input.value(atPointer:"/operation"),.string("outdated"))
             let retry = try press(failed,"retry-catalog")
             XCTAssertEqual(retry.operation?.input.value(atPointer:"/operation"),.string("refreshCatalog"))
             XCTAssertFalse(retry.page?.sources.contains { $0.perform == "tools.read" } == true)
@@ -474,7 +474,7 @@ final class HomebrewTests: XCTestCase {
     }
     func testCatalogRefusalDoesNotReplayFromLateActivityOrAttachToAnOldTask() throws {
         let old: JSONValue = .object(["id": .string("old-catalog"), "kind": .string("task"), "tool": .string("homebrew"), "status": .string("ended"), "result": .object(["outcome": .string("completed")])])
-        let opened = try render("brew.installed",activities:[old])
+        let opened = try render("brew.outdated",activities:[old])
         let refused = try render(event:.operationFinished(id:"brew-task",perform:"tools.startTask",outcome:.declined),state:opened.state)
         let late = try render(event:.sourceDelivered(page:"homebrew-task",source:"brew-activities",sequence:1,result:.array([old]),failure:nil),state:refused.state)
         XCTAssertNil(late.operation); XCTAssertTrue(late.page?.sources.isEmpty == true)
@@ -487,16 +487,33 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(try field(listed,"query-outdated","wget").operation)
         XCTAssertNil(try field(listed,"kind","formula").operation)
         XCTAssertNil(try row(listed,named:"wget",action:"include").operation)
-        let entered = try render(event:.pageFieldChanged(page:"homebrew-outdated",field:"section",values:.object(["section":.string("search")])),state:listed.state)
+        let entered = try render(event:.pageFieldChanged(page:"homebrew-outdated",field:"section",values:.object(["section":.string("upgrade")])),state:listed.state)
         XCTAssertEqual(entered.operation?.input.value(atPointer:"/operation"),.string("refreshCatalog"))
         let reopened = try render("brew.outdated",event:.called,state:listed.state)
         XCTAssertEqual(reopened.operation?.input.value(atPointer:"/operation"),.string("refreshCatalog"))
         let completed = try finishCatalogRefresh(entered)
         XCTAssertNil(completed.state.value(atPointer:"/caches/selection"))
-        XCTAssertEqual(completed.page?.reset?.resets("query-search"),true)
+        XCTAssertEqual(completed.page?.reset?.resets("query-upgrade"),true)
         XCTAssertEqual(completed.page?.reset?.resets("kind"),true)
         XCTAssertEqual(completed.page?.reset?.resets("section"),true)
         XCTAssertNil(completed.operation)
+    }
+
+    func testInstalledAndSearchReadImmediatelyOnEntryNavigationAndRepeatedCalls() throws {
+        for command in ["brew.installed","brew.search"] {
+            let opened = try render(command)
+            XCTAssertNil(opened.operation)
+            XCTAssertEqual(try source(opened).input.value(atPointer:"/operation"),.string("installed"))
+            let called = try render(command,event:.called,state:opened.state)
+            XCTAssertNil(called.operation)
+            XCTAssertEqual(try source(called).input.value(atPointer:"/operation"),.string("installed"))
+        }
+        let listed = try loaded("brew.outdated",packages:[package("wget")])
+        for section in ["list","search"] {
+            let entered = try render(event:.pageFieldChanged(page:"homebrew-outdated",field:"section",values:.object(["section":.string(section)])),state:listed.state)
+            XCTAssertNil(entered.operation)
+            XCTAssertEqual(try source(entered).input.value(atPointer:"/operation"),.string("installed"))
+        }
     }
 
 }
