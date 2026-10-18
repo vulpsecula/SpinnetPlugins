@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 
 root = Path(__file__).resolve().parent.parent
-source = (root / "src/homebrew.js").read_text()
+source = (root / "src/catalog.js").read_text() + "\n" + (root / "src/homebrew.js").read_text()
 entries = json.loads((root / "scripts/entries.json").read_text())
 filenames = {"brew.js" if command == "brew.open" else command.replace(".", "-") + ".js"
              for command, _, _ in entries}
