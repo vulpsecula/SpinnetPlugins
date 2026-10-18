@@ -30,7 +30,7 @@ final class HomebrewTests: XCTestCase {
         try render(event: .pageActionChosen(page: try XCTUnwrap(answer.page?.id), action: action, values: .object([:]), selection: .null), state: answer.state, activities: activities)
     }
     private func field(_ answer: PluginScriptAnswer, _ name: String, _ value: String) throws -> PluginScriptAnswer {
-        try render(event: .pageFieldChanged(page: try XCTUnwrap(answer.page?.id), field: name, values: .object([name: .string(value)])), state: answer.state)
+        try finishCatalogRefresh(render(event: .pageFieldChanged(page: try XCTUnwrap(answer.page?.id), field: name, values: .object([name: .string(value)])), state: answer.state))
     }
     private func source(_ answer: PluginScriptAnswer) throws -> PluginPageSource {
         try XCTUnwrap(answer.page?.sources.first(where: { $0.perform == "tools.read" }))
@@ -46,7 +46,7 @@ final class HomebrewTests: XCTestCase {
         .object(["kind": .string(kind), "name": .string(name)].merging(extra) { _, new in new })
     }
     private func loaded(_ command: String = "brew.installed", packages: [JSONValue]) throws -> PluginScriptAnswer {
-        let opened = try render(command)
+        let opened = try open(command)
         guard case .string(let operation)? = try source(opened).input.value(atPointer: "/operation") else { throw NSError(domain: "missing-operation", code: 1) }
         return try deliver(opened, data(operation, packages))
     }
@@ -60,13 +60,34 @@ final class HomebrewTests: XCTestCase {
         return value.text
     }
 
-    func testTenEntrypointsAutoLoadReadOnlyObjectsWithoutStartingMutations() throws {
+    private func open(_ command: String = "brew.installed", input: JSONValue = .null) throws -> PluginScriptAnswer {
+        try finishCatalogRefresh(render(command, input: input))
+    }
+    private func finishCatalogRefresh(_ answer: PluginScriptAnswer) throws -> PluginScriptAnswer {
+        guard answer.operation?.input.value(atPointer: "/operation") == .string("refreshCatalog") else { return answer }
+        return try completeCatalog(answer, outcome: "completed")
+    }
+    private func completeCatalog(_ answer: PluginScriptAnswer, outcome: String) throws -> PluginScriptAnswer {
+        let admitted = try render(event: .operationFinished(id: "brew-task", perform: "tools.startTask", outcome: .succeeded), state: answer.state)
+        let task: JSONValue = .object(["id": .string("catalog-" + UUID().uuidString), "kind": .string("task"), "tool": .string("homebrew"),
+            "status": .string("ended"), "output": .string("Catalog fixture output"), "result": .object(["outcome": .string(outcome)])])
+        return try render(event: .sourceDelivered(page: "homebrew-task", source: "brew-activities", sequence: 1, result: .array([task]), failure: nil), state: admitted.state)
+    }
+
+    func testTenEntrypointsRefreshCatalogBeforeRelatedReads() throws {
         let manifest = try plugin().manifest
-        XCTAssertEqual(manifest.version, "2.4.0"); XCTAssertEqual(manifest.apiLevel, 6)
+        XCTAssertEqual(manifest.version, "2.5.0"); XCTAssertEqual(manifest.apiLevel, 7)
         XCTAssertEqual(manifest.commands.count, 10)
         XCTAssertNil(manifest.scope(for: .controlExternalApp))
         for command in manifest.commands {
             let answer = try render(command.id.rawValue)
+            if ["brew.installed","brew.search","brew.outdated","brew.upgrade","brew.adopt","brew.taps"].contains(command.id.rawValue) {
+                XCTAssertEqual(answer.operation?.input, .object(["tool": .string("homebrew"), "operation": .string("refreshCatalog")]))
+                XCTAssertFalse(answer.page?.sources.contains { $0.perform == "tools.read" } == true)
+                let completed = try finishCatalogRefresh(answer)
+                XCTAssertNil(completed.operation); XCTAssertEqual(try source(completed).perform, "tools.read")
+                continue
+            }
             XCTAssertNil(answer.operation)
             if ["brew.update", "brew.cleanup"].contains(command.id.rawValue) {
                 XCTAssertTrue(answer.page?.sources.isEmpty == true)
@@ -107,7 +128,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(back.operation); XCTAssertTrue(back.page?.sources.isEmpty == true)
     }
     func testSearchOnTypingMergesInstalledStateAndUninstalledPrimaryStartsConfirmedInstall() throws {
-        let opened = try render("brew.search")
+        let opened = try open("brew.search")
         let inventory = try deliver(opened, data("installed", [package("old", "formula", ["installed_version": .string("1"), "outdated": .bool(true)])]))
         let search = try field(inventory, "query-search", "fire")
         XCTAssertEqual(try source(search).input.value(atPointer: "/query"), .string("fire"))
@@ -121,7 +142,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertEqual(upgrade.operation?.input.value(atPointer: "/operation"), .string("upgrade"))
     }
     func testSearchCancellationRejectsLateQueryResultsAndNeverUsesFlagsOrShellText() throws {
-        let opened = try render("brew.search")
+        let opened = try open("brew.search")
         let inventory = try deliver(opened, data("installed", []))
         let old = try field(inventory, "query-search", "fire")
         let oldSource = try source(old)
@@ -158,7 +179,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(try press(none, "upgrade-formula").operation)
     }
     func testUpgradeAllNeverRunsFromSourceDeliveryAndIgnoresOldPackageArguments() throws {
-        let opened = try render("brew.upgrade", input: .object(["package": .string("firefox")]))
+        let opened = try open("brew.upgrade", input: .object(["package": .string("firefox")]))
         XCTAssertNil(opened.operation)
         let listed = try deliver(opened, data("outdated", [package("wget")]))
         XCTAssertNil(listed.operation)
@@ -184,7 +205,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertTrue(try text(finished,"task-output").hasSuffix("Done"))
     }
     func testDeclinedTaskDoesNotAttachToUnrelatedTaskOrRetry() throws {
-        let opened = try render("brew.update")
+        let opened = try open("brew.update")
         let run = try press(opened, "update-catalog")
         let declined = try self.render(event: .operationFinished(id: "brew-task", perform: "tools.startTask", outcome: .declined), state: run.state)
         XCTAssertNil(declined.operation); XCTAssertTrue(declined.page?.sources.isEmpty == true)
@@ -193,7 +214,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertFalse(try text(late,"task-output").contains("unrelated")); XCTAssertNil(late.operation)
     }
     func testServicesPrimaryUsesStatusAndRefreshesThroughTypedUserOwnedOperations() throws {
-        let opened = try render("brew.services")
+        let opened = try open("brew.services")
         let result: JSONValue = .object(["tool": .string("homebrew"), "operation": .string("services"), "services": .array([
             .object(["name": .string("redis"), "status": .string("started"), "user_owned": .bool(true)]),
             .object(["name": .string("postgresql"), "status": .string("none"), "user_owned": .bool(true)])])])
@@ -204,7 +225,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertEqual(try row(listed,named:"redis",action:"restart").operation?.input.value(atPointer:"/operation"), .string("serviceRestart"))
     }
     func testTapsExposeContainerActionsWithoutInferringSourceTrust() throws {
-        let opened = try render("brew.taps")
+        let opened = try open("brew.taps")
         let listed = try deliver(opened,.object(["operation": .string("taps"), "taps": .array([
             .object(["name": .string("user/repo"), "official": .bool(false), "trusted": .bool(false), "formula_count": .number(2), "cask_count": .number(1)])])]))
         let browse = try row(listed,named:"user/repo")
@@ -217,7 +238,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertEqual(try press(filled,"add-tap").operation?.input.value(atPointer:"/tap"), .string("new/repo"))
     }
     func testAdoptionUsesAppCandidateThenPreviewTargetAndASeparateConfirmGesture() throws {
-        let opened = try render("brew.adopt")
+        let opened = try open("brew.adopt")
         let app: JSONValue = .object(["identity": .string("app-copy"), "target": .string("app_candidate"), "name": .string("Firefox"), "version": .string("1"), "candidates": .array([.object(["name": .string("firefox"), "confidence": .string("likely"), "reason": .string("Name and version match")])])])
         let listed = try deliver(opened,.object(["operation": .string("adoptionCandidates"), "applications": .array([app])]))
         let preview = try row(listed,named:"Firefox")
@@ -249,7 +270,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(window.operation); XCTAssertTrue(window.page?.sources.isEmpty == true)
     }
     func testUnknownReadFailureIsNotAnEmptySuccessfulInventory() throws {
-        let opened = try render()
+        let opened = try open()
         let pending = try source(opened)
         let failed = try render(event:.sourceDelivered(page:"homebrew-list",source:pending.id,sequence:1,result:.null,failure:.init(category:.toolFailed,message:"Catalog unavailable")),state:opened.state)
         XCTAssertEqual(try text(failed,"error"),"Catalog unavailable")
@@ -257,7 +278,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(failed.operation)
     }
     func testLargeUnicodeTaskOutputStaysInsideStateBudgetAndDisclosesTail() throws {
-        let opened = try render("brew.update")
+        let opened = try open("brew.update")
         let started = try press(opened,"update-catalog")
         let admitted = try render(event:.operationFinished(id:"brew-task",perform:"tools.startTask",outcome:.succeeded),state:started.state)
         let task: JSONValue = .object(["id":.string("task"),"kind":.string("task"),"tool":.string("homebrew"),"status":.string("running"),"output":.string(String(repeating:"下载🙂\n",count:10000))])
@@ -291,10 +312,10 @@ final class HomebrewTests: XCTestCase {
     func testAdoptionIgnoreAndRestorePersistAcrossViewSessions() throws {
         let application: JSONValue = .object(["identity":.string("copy-identity"),"target":.string("app_transient"),"name":.string("Example"),"candidates":.array([.object(["name":.string("example"),"confidence":.string("likely")])])])
         let result: JSONValue = .object(["applications":.array([application])])
-        let listed = try deliver(render("brew.adopt"),result)
+        let listed = try deliver(open("brew.adopt"),result)
         let ignored = try row(listed,named:"Example",action:"ignore")
         XCTAssertEqual(ignored.page?.collection?.total,0); XCTAssertNil(ignored.operation)
-        let reopened = try deliver(render("brew.adopt"),result)
+        let reopened = try deliver(open("brew.adopt"),result)
         XCTAssertEqual(reopened.page?.collection?.total,0)
         let showIgnored = try field(reopened,"adoption-filter","ignored")
         XCTAssertEqual(showIgnored.page?.collection?.total,1)
@@ -305,7 +326,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertEqual(available.page?.collection?.total,1)
     }
     func testTapPackageBrowsingUsesTheSameObjectActionsAndBackContext() throws {
-        let opened = try render("brew.taps")
+        let opened = try open("brew.taps")
         let taps: JSONValue = .object(["taps":.array([.object(["name":.string("user/repo"),"official":.bool(false),"trusted":.bool(true),"formula_count":.number(1),"cask_count":.number(0)])])])
         let listed = try deliver(opened,taps)
         let browse = try row(listed,named:"user/repo")
@@ -320,7 +341,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(back.operation)
     }
     func testPartialInventoryNeverAssumesAnUnmatchedSearchPackageIsUninstalled() throws {
-        let opened = try render("brew.search")
+        let opened = try open("brew.search")
         let inventory = try deliver(opened,.object(["operation":.string("installed"),"packages":.array([]),"truncated":.bool(true)]))
         let searching = try field(inventory,"query-search","fire")
         let found = try deliver(searching,data("search",[package("firefox","cask")]))
@@ -360,7 +381,7 @@ final class HomebrewTests: XCTestCase {
         }
     }
     func testReturningToSearchCannotPresentThePreviousQueryUnderAnEmptyField() throws {
-        let inventory = try deliver(render("brew.search"), data("installed", []))
+        let inventory = try deliver(open("brew.search"), data("installed", []))
         let found = try deliver(field(inventory, "query-search", "fire"), data("search", [package("firefox", "cask")]))
         let installed = try field(found, "section", "list")
         let search = try field(installed, "section", "search")
@@ -372,7 +393,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(refreshed.operation)
     }
     func testReportSwitchCannotRelabelThePreviousOutputWhenTheNewReadFails() throws {
-        let doctor = try deliver(render("brew.doctor"), .object(["output": .string("Old doctor output"), "exit_status": .number(0)]))
+        let doctor = try deliver(open("brew.doctor"), .object(["output": .string("Old doctor output"), "exit_status": .number(0)]))
         let version = try field(doctor, "report", "version")
         XCTAssertNil(version.page?.component("report-output"))
         let pending = try source(version)
@@ -381,7 +402,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNotNil(failed.page?.component("error"))
     }
     func testSystemServiceRowsExplainReadOnlyOwnershipAndOfferNoMutation() throws {
-        let listed = try deliver(render("brew.services"), .object(["services": .array([.object(["name": .string("system-redis"), "status": .string("started"), "user_owned": .bool(false)])])]))
+        let listed = try deliver(open("brew.services"), .object(["services": .array([.object(["name": .string("system-redis"), "status": .string("started"), "user_owned": .bool(false)])])]))
         let item = try XCTUnwrap(listed.page?.collection?.items.first)
         XCTAssertEqual(item.accessory, "Read Only")
         XCTAssertTrue(item.subtitle?.contains("Managed outside your user account") == true)
@@ -391,14 +412,14 @@ final class HomebrewTests: XCTestCase {
     func testCorruptIgnoredAppsStorageShowsARecoverableErrorWithoutDiscardingIt() throws {
         let id = try plugin().manifest.id
         try storage.setValue(.string("corrupt"), forKey: "homebrew.browser.v3.ignored-apps", of: id)
-        let listed = try deliver(render("brew.adopt"), .object(["applications": .array([])]))
+        let listed = try deliver(open("brew.adopt"), .object(["applications": .array([])]))
         XCTAssertNotNil(listed.page?.component("error"))
         XCTAssertNil(listed.operation)
         XCTAssertEqual(try storage.value(forKey: "homebrew.browser.v3.ignored-apps", of: id), .string("corrupt"))
     }
     func testIgnoreWriteFailureKeepsTheApplicationAvailableAndShowsError() throws {
         let application: JSONValue = .object(["identity": .string("copy"), "target": .string("target"), "name": .string("Example"), "candidates": .array([.object(["name": .string("example"), "confidence": .string("likely")])])])
-        let listed = try deliver(render("brew.adopt"), .object(["applications": .array([application])]))
+        let listed = try deliver(open("brew.adopt"), .object(["applications": .array([application])]))
         // Existing cache can still be read, but the next key cannot be created.
         storage = PluginStorage(directory: directory, limits: .init(maximumKeyLength: 256, maximumValueBytes: 512 * 1024, maximumPluginBytes: 10 * 1024 * 1024, maximumKeyCount: 1))
         let failed = try row(listed, named: "Example", action: "ignore")
@@ -418,6 +439,61 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(refreshed.page?.component("error"))
         XCTAssertEqual(refreshed.page?.collection?.items.filter { $0.marks.contains("included") }.count, 2)
         XCTAssertNil(refreshed.operation)
+    }
+
+    func testCatalogAdmissionAndRunningOutputNeverReadBeforeActualCompletion() throws {
+        let opened = try render("brew.outdated")
+        let admitted = try render(event: .operationFinished(id: "brew-task", perform: "tools.startTask", outcome: .succeeded), state: opened.state)
+        XCTAssertFalse(admitted.page?.sources.contains { $0.perform == "tools.read" } == true)
+        let task: JSONValue = .object(["id": .string("activity_1123456789abcdef0123456789abcdef"), "kind": .string("task"), "tool": .string("homebrew"), "status": .string("running"), "output": .string("Updating…")])
+        let running = try render(event: .sourceDelivered(page: "homebrew-task", source: "brew-activities", sequence: 1, result: .array([task]), failure: nil), state: admitted.state)
+        XCTAssertEqual(try text(running,"task-output"), "Updating…")
+        XCTAssertFalse(running.page?.sources.contains { $0.perform == "tools.read" } == true)
+        XCTAssertEqual(try press(running,"stop").operation?.perform,"activities.stop")
+        XCTAssertNil(try render("brew.outdated",event: .called,state: running.state).operation)
+        let finished = try finishCatalogRefresh(opened)
+        XCTAssertEqual(finished.page?.id,"homebrew-outdated")
+        XCTAssertEqual(try source(finished).input.value(atPointer:"/operation"),.string("outdated"))
+        XCTAssertNil(finished.operation)
+    }
+    func testCatalogFailureRequiresExplicitRetryOrDisclosedLocalRead() throws {
+        for outcome in ["failed","stopped","unknown"] {
+            let failed = try completeCatalog(render("brew.search"),outcome:outcome)
+            XCTAssertEqual(failed.page?.id,"homebrew-task")
+            XCTAssertEqual(try text(failed,"task-output"),"Catalog fixture output")
+            XCTAssertTrue(failed.page?.sources.isEmpty == true)
+            XCTAssertNil(failed.operation)
+            let local = try press(failed,"local-catalog")
+            XCTAssertNil(local.operation)
+            XCTAssertTrue(try text(local,"notice").contains("last locally available"))
+            XCTAssertEqual(try source(local).input.value(atPointer:"/operation"),.string("installed"))
+            let retry = try press(failed,"retry-catalog")
+            XCTAssertEqual(retry.operation?.input.value(atPointer:"/operation"),.string("refreshCatalog"))
+            XCTAssertFalse(retry.page?.sources.contains { $0.perform == "tools.read" } == true)
+        }
+    }
+    func testCatalogRefusalDoesNotReplayFromLateActivityOrAttachToAnOldTask() throws {
+        let old: JSONValue = .object(["id": .string("old-catalog"), "kind": .string("task"), "tool": .string("homebrew"), "status": .string("ended"), "result": .object(["outcome": .string("completed")])])
+        let opened = try render("brew.installed",activities:[old])
+        let refused = try render(event:.operationFinished(id:"brew-task",perform:"tools.startTask",outcome:.declined),state:opened.state)
+        let late = try render(event:.sourceDelivered(page:"homebrew-task",source:"brew-activities",sequence:1,result:.array([old]),failure:nil),state:refused.state)
+        XCTAssertNil(late.operation); XCTAssertTrue(late.page?.sources.isEmpty == true)
+        let admitted = try render(event:.operationFinished(id:"brew-task",perform:"tools.startTask",outcome:.succeeded),state:opened.state)
+        let waiting = try render(event:.sourceDelivered(page:"homebrew-task",source:"brew-activities",sequence:1,result:.array([old]),failure:nil),state:admitted.state)
+        XCTAssertFalse(waiting.page?.sources.contains { $0.perform == "tools.read" } == true)
+    }
+    func testSectionEntryRefreshesButTypingFiltersAndCheckboxesDoNot() throws {
+        let listed = try loaded("brew.outdated",packages:[package("wget")])
+        XCTAssertNil(try field(listed,"query-outdated","wget").operation)
+        XCTAssertNil(try field(listed,"kind","formula").operation)
+        XCTAssertNil(try row(listed,named:"wget",action:"include").operation)
+        let entered = try render(event:.pageFieldChanged(page:"homebrew-outdated",field:"section",values:.object(["section":.string("search")])),state:listed.state)
+        XCTAssertEqual(entered.operation?.input.value(atPointer:"/operation"),.string("refreshCatalog"))
+        let reopened = try render("brew.outdated",event:.called,state:listed.state)
+        XCTAssertEqual(reopened.operation?.input.value(atPointer:"/operation"),.string("refreshCatalog"))
+        let completed = try finishCatalogRefresh(entered)
+        XCTAssertNil(completed.state.value(atPointer:"/caches/selection"))
+        XCTAssertNil(completed.operation)
     }
 
 }

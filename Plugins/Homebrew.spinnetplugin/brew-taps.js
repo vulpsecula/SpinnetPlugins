@@ -76,7 +76,7 @@ const brewCatalog = (() => {
   const s = Object.assign({screen:mode,section:mode,query:String(initial.package || ""),kind:"both",serial:0,instance:Date.now().toString(36) + Math.random().toString(36).slice(2),
     caches:{},read:null,queue:[],error:"",notice:"",detail:null,preview:null,origin:null,
     taskID:null,waiting:false,admitted:false,running:false,seen:[],output:"",truncated:false,
-    taskTitle:"",taskResult:null,returnTo:null,report:"doctor",tap:"",adoptionFilter:"available",rawReturn:null},state || {});
+    taskTitle:"",taskResult:null,returnTo:null,catalogRefresh:false,report:"doctor",tap:"",adoptionFilter:"available",rawReturn:null},state || {});
   const reset = [], cacheMemo = {};
   let operation;
   const busy = () => s.waiting || s.running;
@@ -132,6 +132,16 @@ const brewCatalog = (() => {
     s.caches.search = null; delete cacheMemo.search;
     s.kind = "both"; s.notice = ""; s.output = ""; s.truncated = false; s.report = "doctor";
     reset.push("section","query-" + section,"kind","report");
+    s.error = "";
+    if (["list","search","outdated","upgrade","adopt","tap"].includes(section)) startTask({operation:"refreshCatalog"},"Updating Homebrew Catalog");
+    else refresh();
+  }
+  function finishCatalogRefresh(useLocal) {
+    const route = s.returnTo || {section:s.section,query:s.query,kind:s.kind};
+    s.catalogRefresh = false; s.taskID = null; s.taskResult = null;
+    s.screen = route.section; s.section = route.section; s.query = route.query; s.kind = route.kind;
+    s.caches = {}; Object.keys(cacheMemo).forEach(key => { delete cacheMemo[key]; });
+    s.notice = useLocal ? "Catalog update did not complete. Showing the last locally available Homebrew data." : "Catalog updated.";
     refresh();
   }
   function showOutput(value,truncated) {
@@ -158,8 +168,9 @@ const brewCatalog = (() => {
   }
   function startTask(task,title) {
     if (busy() || s.error) return;
-    // The only callers are explicit row/button gestures. No read/Task completion
-    // queues another mutation, and a refusal never replays one.
+    // Entry may request only the separately scoped fixed catalog refresh.
+    // No read/Task completion queues a mutation, and a refusal never replays one.
+    s.catalogRefresh = task.operation === "refreshCatalog";
     s.returnTo = s.origin || {section:s.section,query:s.query,kind:s.kind};
     s.read = null; s.queue = []; s.screen = "task";
     s.taskTitle = title; s.taskResult = null; s.taskID = null; s.waiting = true; s.admitted = false; s.running = false;
@@ -290,7 +301,8 @@ const brewCatalog = (() => {
         showOutput(typeof task.output === "string" ? task.output : (task.log || []).join("\n"),task.output_truncated);
         if (!s.running) {
           s.taskResult = task.result || {outcome:"unknown"};
-          if (endedNow) refresh(s.returnTo && s.returnTo.section || s.section);
+          if (endedNow && s.catalogRefresh && s.taskResult.outcome === "completed") finishCatalogRefresh(false);
+          else if (endedNow && !s.catalogRefresh) refresh(s.returnTo && s.returnTo.section || s.section);
         }
       }
     }
@@ -343,6 +355,9 @@ const brewCatalog = (() => {
         s.read = null; s.queue = []; s.rawReturn = null;
       } else if (e.action === "back") returnToList();
       else if (e.action === "raw-output") showRaw();
+      else if (e.action === "retry-catalog" && s.screen === "task" && s.catalogRefresh) {
+        s.error = ""; startTask({operation:"refreshCatalog"},"Updating Homebrew Catalog");
+      } else if (e.action === "local-catalog" && s.screen === "task" && s.catalogRefresh) finishCatalogRefresh(true);
       else if (e.action === "refresh") refresh();
       else if (e.action === "cancel-read") { s.read = null; s.queue = []; s.notice = "Read cancelled. Refresh to retry."; }
       else if (e.action === "update-catalog" && s.screen === "update") startTask({operation:"update"},"Update Homebrew and package catalogs");
@@ -485,10 +500,11 @@ const brewCatalog = (() => {
   } else if (s.screen === "task") {
     content.push(c.text({id:"task-title",text:model.text(s.taskTitle),style:{fontSize:17,fontWeight:"semibold"}}));
     const result = s.taskResult;
-    content.push(c.text({id:"task-status",text:model.text(s.running ? "Running…" : s.waiting ? s.admitted ? "Waiting for task output…" : "Waiting for Host confirmation…" : result ? [result.outcome,result.reason,typeof result.exit_status === "number" ? "exit " + result.exit_status : ""].filter(Boolean).join(" · ") : "Task status unavailable"),style:{color:"secondary"}}));
+    content.push(c.text({id:"task-status",text:model.text(s.running ? "Running…" : s.waiting ? s.admitted ? "Waiting for task output…" : s.catalogRefresh ? "Starting catalog update…" : "Waiting for Host confirmation…" : result ? [result.outcome,result.reason,typeof result.exit_status === "number" ? "exit " + result.exit_status : ""].filter(Boolean).join(" · ") : "Task status unavailable"),style:{color:"secondary"}}));
     content.push(literal("task-output",s.output || "Waiting for output…","Output"));
     if (s.truncated) content.push(c.text({id:"output-limit",text:"Showing the latest output; earlier text exceeded the display limit.",style:{color:"secondary"}}));
-    if (!s.waiting) content.push(buttons("task-controls",s.running ? [["stop","Stop"]] : [["back","Back to " + model.titles[model.sections.indexOf(s.returnTo && s.returnTo.section || s.section)]]]));
+    if (!s.waiting && !s.running && s.catalogRefresh) content.push(buttons("task-controls",[["retry-catalog","Retry Catalog Update"],["local-catalog","Continue with Local Catalog"]]));
+    else if (!s.waiting) content.push(buttons("task-controls",s.running ? [["stop","Stop"]] : [["back","Back to " + model.titles[model.sections.indexOf(s.returnTo && s.returnTo.section || s.section)]]]));
   } else if (s.screen === "raw") {
     const result = cached("raw");
     if (result) {
