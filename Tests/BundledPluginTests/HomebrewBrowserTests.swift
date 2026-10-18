@@ -76,7 +76,7 @@ final class HomebrewTests: XCTestCase {
 
     func testTenEntrypointsRefreshCatalogBeforeRelatedReads() throws {
         let manifest = try plugin().manifest
-        XCTAssertEqual(manifest.version, "2.5.0"); XCTAssertEqual(manifest.apiLevel, 7)
+        XCTAssertEqual(manifest.version, "2.5.1"); XCTAssertEqual(manifest.apiLevel, 7)
         XCTAssertEqual(manifest.commands.count, 10)
         XCTAssertNil(manifest.scope(for: .controlExternalApp))
         for command in manifest.commands {
@@ -493,6 +493,9 @@ final class HomebrewTests: XCTestCase {
         XCTAssertEqual(reopened.operation?.input.value(atPointer:"/operation"),.string("refreshCatalog"))
         let completed = try finishCatalogRefresh(entered)
         XCTAssertNil(completed.state.value(atPointer:"/caches/selection"))
+        XCTAssertEqual(completed.page?.reset?.resets("query-search"),true)
+        XCTAssertEqual(completed.page?.reset?.resets("kind"),true)
+        XCTAssertEqual(completed.page?.reset?.resets("section"),true)
         XCTAssertNil(completed.operation)
     }
 

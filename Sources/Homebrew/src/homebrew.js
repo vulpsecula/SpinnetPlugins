@@ -69,6 +69,7 @@
   function finishCatalogRefresh(useLocal) {
     const route = s.returnTo || {section:s.section,query:s.query,kind:s.kind};
     s.catalogRefresh = false; s.taskID = null; s.taskResult = null;
+    reset.push("section","query-" + route.section,"kind","report");
     s.screen = route.section; s.section = route.section; s.query = route.query; s.kind = route.kind;
     s.caches = {}; Object.keys(cacheMemo).forEach(key => { delete cacheMemo[key]; });
     s.notice = useLocal ? "Catalog update did not complete. Showing the last locally available Homebrew data." : "Catalog updated.";
