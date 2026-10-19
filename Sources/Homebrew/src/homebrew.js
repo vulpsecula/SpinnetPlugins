@@ -39,7 +39,7 @@
   }
   function request(requests) {
     s.read = null; s.queue = requests; s.error = "";
-    for (const pending of requests) if (["details","preview","tap-details","report","raw"].includes(pending.slot)) { s.caches[pending.slot] = null; delete cacheMemo[pending.slot]; }
+    for (const pending of requests) if (["details","preview","tap-details","report","raw","autoremove"].includes(pending.slot)) { s.caches[pending.slot] = null; delete cacheMemo[pending.slot]; }
     nextRead();
   }
   function refresh(section = s.section) {
@@ -53,6 +53,7 @@
     else if (section === "services") request([read({operation:"services"},"catalog","services")]);
     else if (section === "tap") request([read({operation:"taps"},"catalog","taps")]);
     else if (section === "adopt") request([read({operation:"adoptionCandidates"},"catalog","adoption")]);
+    else if (section === "cleanup") request([read({operation:"previewAutoremove"},"autoremove","autoremove")]);
     else if (section === "doctor") request([read({operation:"commandOutput",command:s.report},"report","report")]);
     else { s.read = null; s.queue = []; }
   }
@@ -96,6 +97,10 @@
     s.detail = {kind:item.kind,name:item.name,isInstalled:item.isInstalled,installationKnown:item.installationKnown};
     s.screen = "details"; s.preview = null;
     request([read({operation:"info",kind:item.kind,names:[item.name]},"details","details")]);
+  }
+  function autoremoveReady(result) {
+    return result && result.available === true && result.succeeded === true && result.complete === true &&
+      result.no_op === false && Array.isArray(result.packages) && result.packages.length > 0;
   }
   function startTask(task,title) {
     if (busy() || s.error) return;
@@ -293,7 +298,7 @@
       else if (e.action === "cancel-read") { s.read = null; s.queue = []; s.notice = "Read cancelled. Refresh to retry."; }
       else if (e.action === "update-catalog" && s.screen === "update") startTask({operation:"update"},"Update Homebrew and package catalogs");
       else if (e.action === "cleanup" && s.screen === "cleanup") startTask({operation:"cleanup",days:120},"Clean downloads older than 120 days");
-      else if (e.action === "autoremove" && s.screen === "cleanup") startTask({operation:"autoremove"},"Remove unused dependencies");
+      else if (e.action === "autoremove" && s.screen === "cleanup" && !s.read && autoremoveReady(cached("autoremove"))) startTask({operation:"autoremove"},"Remove unused dependencies");
       else if (e.action === "upgrade-all" && s.screen === "upgrade") startTask(Object.assign({operation:"upgradeAll"},s.kind !== "both" ? {kind:s.kind} : {}),"Upgrade all eligible packages");
       else if (["upgrade-formula","upgrade-cask"].includes(e.action) && ["outdated","upgrade"].includes(s.screen)) {
         const kind = e.action === "upgrade-cask" ? "cask" : "formula";
@@ -340,7 +345,7 @@
   if (!busy() && !["task","details","preview","tap-details","raw"].includes(s.screen)) content.push(c.row({id:"navigation",content:[c.choiceField({id:"section",title:"Homebrew",choices:model.sections,choiceTitles:model.titles,value:s.section}),buttons("refresh-controls",[["refresh","Refresh"]].concat(["list","outdated","upgrade","services","tap"].includes(s.screen) || s.screen === "search" && model.queryValid(s.query.trim().toLowerCase()) ? [["raw-output","Raw Output"]] : []))]}));
   if (["details","preview","tap-details","raw"].includes(s.screen)) content.push(buttons("back-controls",[["back","Back"]]));
   if (s.notice) content.push(c.text({id:"notice",text:model.text(s.notice),style:{color:"secondary"}}));
-  if (s.read) content.push(c.text({id:"loading",text:"Loading…",style:{color:"secondary"}}));
+  if (s.read) content.push(c.text({id:"loading",text:s.read.purpose === "autoremove" ? "Checking unused dependencies…" : "Loading…",style:{color:"secondary"}}));
   const browser = ["list","search","outdated","upgrade","services","tap","adopt"].includes(s.screen);
   if (browser) {
     const bar = [c.textField({id:"query-" + s.section,title:s.screen === "search" ? "Search" : "Filter",value:s.query,placeholder:s.screen === "search" ? "Search packages…" : "Filter this list…",collection:collectionID()})];
@@ -454,7 +459,18 @@
   } else if (s.screen === "cleanup") {
     content.push(c.text({id:"cleanup-title",text:"Clean up Homebrew",style:{fontSize:20,fontWeight:"semibold"}}));
     content.push(c.text({id:"cleanup-help",text:"Remove cached downloads older than 120 days, or review unused dependencies for removal."}));
-    content.push(buttons("cleanup-actions",[["cleanup","Clean Old Downloads…"],["autoremove","Remove Unused Dependencies…"]]));
+    content.push(buttons("cleanup-actions",[["cleanup","Clean Old Downloads…"]]));
+    if (!s.read) {
+      const result = cached("autoremove");
+      const empty = result && result.available === true && result.succeeded === true && result.complete === true &&
+        result.no_op === true && Array.isArray(result.packages) && result.packages.length === 0;
+      const ready = autoremoveReady(result);
+      const status = empty ? "No unused dependencies to remove." : ready ?
+        result.packages.length + (result.packages.length === 1 ? " unused dependency can be removed." : " unused dependencies can be removed.") :
+        "Unused dependencies could not be checked. Refresh to retry.";
+      content.push(c.text({id:"cleanup-status",text:status,style:{color:"secondary"}}));
+      if (ready) content.push(buttons("autoremove-actions",[["autoremove","Remove Unused Dependencies…"]]));
+    }
   }
   if (s.error) content.push(c.text({id:"error",text:model.text(s.error),style:{color:"red"}}));
   if (clipped) content.push(c.text({id:"display-limit",text:"Showing the latest output; earlier text exceeded the display limit.",style:{color:"secondary"}}));

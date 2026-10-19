@@ -76,7 +76,7 @@ final class HomebrewTests: XCTestCase {
 
     func testTenEntrypointsRefreshCatalogBeforeRelatedReads() throws {
         let manifest = try plugin().manifest
-        XCTAssertEqual(manifest.version, "2.5.2"); XCTAssertEqual(manifest.apiLevel, 7)
+        XCTAssertEqual(manifest.version, "2.5.3"); XCTAssertEqual(manifest.apiLevel, 7)
         XCTAssertEqual(manifest.commands.count, 10)
         XCTAssertNil(manifest.scope(for: .controlExternalApp))
         for command in manifest.commands {
@@ -89,7 +89,7 @@ final class HomebrewTests: XCTestCase {
                 continue
             }
             XCTAssertNil(answer.operation)
-            if ["brew.update", "brew.cleanup"].contains(command.id.rawValue) {
+            if command.id.rawValue == "brew.update" {
                 XCTAssertTrue(answer.page?.sources.isEmpty == true)
             } else {
                 XCTAssertEqual(try source(answer).perform, "tools.read")
@@ -100,6 +100,37 @@ final class HomebrewTests: XCTestCase {
             XCTAssertTrue(manifest.commands.contains { $0.id == target })
         }
     }
+    func testCleanupChecksUnusedDependenciesBeforeOfferingRemoval() throws {
+        let opened = try open("brew.cleanup")
+        XCTAssertEqual(try source(opened).input.value(atPointer: "/operation"), .string("previewAutoremove"))
+        let request = try HomebrewReadInput(source(opened).input)
+        let scope = try XCTUnwrap(plugin().manifest.scope(for: .readReviewedTools))
+        XCTAssertNoThrow(try request.authorize(in: scope))
+        XCTAssertNil(opened.operation)
+        XCTAssertNil(try press(opened, "autoremove").operation)
+        for count in [0, 2] {
+            let preview: JSONValue = .object(["available": .bool(true), "succeeded": .bool(true), "complete": .bool(true),
+                "no_op": .bool(count == 0), "packages": .array((0..<count).map { package("unused-\($0)") })])
+            let ready = try deliver(opened, preview)
+            XCTAssertNil(ready.operation, "Read completion must never queue a mutation")
+            if count == 0 {
+                XCTAssertEqual(try text(ready, "cleanup-status"), "No unused dependencies to remove.")
+                XCTAssertNil(ready.page?.component("autoremove-actions"))
+                XCTAssertNil(try press(ready, "autoremove").operation)
+            } else {
+                XCTAssertNotNil(ready.page?.component("autoremove-actions"))
+                XCTAssertEqual(try press(ready, "autoremove").operation?.input.value(atPointer: "/operation"), .string("autoremove"))
+                let refreshing = try press(ready, "refresh")
+                XCTAssertNil(refreshing.page?.component("autoremove-actions"))
+                XCTAssertNil(try press(refreshing, "autoremove").operation)
+            }
+        }
+        let failed = try deliver(opened, .object(["available": .bool(true), "succeeded": .bool(false), "complete": .bool(false), "packages": .array([])]))
+        XCTAssertNotEqual(try text(failed, "cleanup-status"), "No unused dependencies to remove.")
+        XCTAssertNil(failed.page?.component("autoremove-actions"))
+        XCTAssertNil(try press(failed, "autoremove").operation)
+    }
+
     func testInstalledInventoryGroupsPinsAndDependenciesWithStableKindQualifiedIdentity() throws {
         let result = try loaded(packages: [
             package("same", "formula", ["installed_version": .string("1"), "pinned": .bool(true)]),
