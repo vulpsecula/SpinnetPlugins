@@ -76,7 +76,7 @@ final class HomebrewTests: XCTestCase {
 
     func testTenEntrypointsRefreshCatalogBeforeRelatedReads() throws {
         let manifest = try plugin().manifest
-        XCTAssertEqual(manifest.version, "2.5.3"); XCTAssertEqual(manifest.apiLevel, 7)
+        XCTAssertEqual(manifest.version, "2.5.4"); XCTAssertEqual(manifest.apiLevel, 7)
         XCTAssertEqual(manifest.commands.count, 10)
         XCTAssertNil(manifest.scope(for: .controlExternalApp))
         for command in manifest.commands {

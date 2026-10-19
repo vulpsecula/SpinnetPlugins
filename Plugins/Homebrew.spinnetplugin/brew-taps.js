@@ -71,9 +71,9 @@ const brewCatalog = (() => {
 // SPDX-License-Identifier: MIT
 (() => {
   const c = spinnet.ui.components, model = brewCatalog;
-  const e = event || {}, initial = input && typeof input === "object" ? input : {};
+  const e = event || {};
   const mode = model.sections.includes(entryMode) ? entryMode : "list";
-  const s = Object.assign({screen:mode,section:mode,query:String(initial.package || ""),kind:"both",serial:0,instance:Date.now().toString(36) + Math.random().toString(36).slice(2),
+  const s = Object.assign({screen:mode,section:mode,query:"",kind:"both",serial:0,instance:Date.now().toString(36) + Math.random().toString(36).slice(2),
     caches:{},read:null,queue:[],error:"",notice:"",detail:null,preview:null,origin:null,
     taskID:null,waiting:false,admitted:false,running:false,seen:[],output:"",truncated:false,
     taskTitle:"",taskResult:null,returnTo:null,catalogRefresh:false,report:"doctor",tap:"",adoptionFilter:"available",rawReturn:null},state || {});
@@ -129,7 +129,7 @@ const brewCatalog = (() => {
   }
   function navigate(section) {
     s.section = section; s.screen = section; s.origin = null; s.detail = null; s.preview = null;
-    s.query = section === "search" ? String(initial.package || "") : "";
+    s.query = "";
     s.caches.search = null; delete cacheMemo.search;
     s.kind = "both"; s.notice = ""; s.output = ""; s.truncated = false; s.report = "doctor";
     reset.push("section","query-" + section,"kind","report");
