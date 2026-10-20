@@ -76,7 +76,7 @@ final class HomebrewTests: XCTestCase {
 
     func testTenEntrypointsRefreshCatalogBeforeRelatedReads() throws {
         let manifest = try plugin().manifest
-        XCTAssertEqual(manifest.version, "2.5.4"); XCTAssertEqual(manifest.apiLevel, 7)
+        XCTAssertEqual(manifest.version, "2.5.5"); XCTAssertEqual(manifest.apiLevel, 7)
         XCTAssertEqual(manifest.commands.count, 10)
         XCTAssertNil(manifest.scope(for: .controlExternalApp))
         for command in manifest.commands {
@@ -216,6 +216,36 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(listed.operation)
         let run = try press(listed, "upgrade-all")
         XCTAssertEqual(run.operation?.input, .object(["tool": .string("homebrew"), "operation": .string("upgradeAll")]))
+    }
+    func testSilentCleanupCompletionDoesNotKeepWaitingForOutput() throws {
+        let opened = try open("brew.cleanup")
+        let run = try press(opened, "cleanup")
+        let admitted = try render(event: .operationFinished(id: "brew-task", perform: "tools.startTask", outcome: .succeeded), state: run.state)
+        let task: JSONValue = .object(["id": .string("silent-cleanup"), "kind": .string("task"), "tool": .string("homebrew"), "status": .string("ended"), "output": .string(""), "log": .array([]), "result": .object(["outcome": .string("completed")])])
+        let finished = try render(event: .sourceDelivered(page: "homebrew-task", source: "brew-activities", sequence: 1, result: .array([task]), failure: nil), state: admitted.state)
+        XCTAssertEqual(try text(finished, "task-status"), "completed")
+        XCTAssertEqual(try text(finished, "task-output"), "Completed with no output.")
+        XCTAssertNil(finished.operation, "Rendering a silent completion must not retry cleanup")
+    }
+    func testEmptyTaskTranscriptFollowsTheLifecycleAndPreservesNativeOutput() throws {
+        let opened = try open("brew.cleanup")
+        let run = try press(opened, "cleanup")
+        XCTAssertEqual(try text(run, "task-output"), "Waiting for output…")
+        let admitted = try render(event: .operationFinished(id: "brew-task", perform: "tools.startTask", outcome: .succeeded), state: run.state)
+        let running: JSONValue = .object(["id": .string("quiet-task"), "kind": .string("task"), "tool": .string("homebrew"), "status": .string("running"), "output": .string("")])
+        let live = try render(event: .sourceDelivered(page: "homebrew-task", source: "brew-activities", sequence: 1, result: .array([running]), failure: nil), state: admitted.state)
+        XCTAssertEqual(try text(live, "task-output"), "Waiting for output…")
+        for outcome in ["failed", "stopped", "refused", "unknown"] {
+            let ended: JSONValue = .object(["id": .string("quiet-task"), "kind": .string("task"), "tool": .string("homebrew"), "status": .string("ended"), "output": .string(""), "result": .object(["outcome": .string(outcome)])])
+            let finished = try render(event: .sourceDelivered(page: "homebrew-task", source: "brew-activities", sequence: 2, result: .array([ended]), failure: nil), state: live.state)
+            XCTAssertEqual(try text(finished, "task-output"), "No output was produced.", outcome)
+            XCTAssertNil(finished.operation)
+        }
+        let raw = "==> Removing cached download\n  12.3MB reclaimed"
+        let ended: JSONValue = .object(["id": .string("quiet-task"), "kind": .string("task"), "tool": .string("homebrew"), "status": .string("ended"), "output": .string(raw), "result": .object(["outcome": .string("completed")])])
+        let finished = try render(event: .sourceDelivered(page: "homebrew-task", source: "brew-activities", sequence: 2, result: .array([ended]), failure: nil), state: live.state)
+        XCTAssertEqual(try text(finished, "task-output"), raw)
+        XCTAssertNil(finished.operation)
     }
     func testTaskStreamsOnlyItsOwnLiteralOutputAndCompletionRefreshesWithoutReplay() throws {
         let listed = try loaded("brew.outdated", packages: [package("wget")])

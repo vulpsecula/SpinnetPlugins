@@ -507,7 +507,7 @@ const brewCatalog = (() => {
     content.push(c.text({id:"task-title",text:model.text(s.taskTitle),style:{fontSize:17,fontWeight:"semibold"}}));
     const result = s.taskResult;
     content.push(c.text({id:"task-status",text:model.text(s.running ? "Running…" : s.waiting ? s.admitted ? "Waiting for task output…" : s.catalogRefresh ? "Starting catalog update…" : "Waiting for Host confirmation…" : result ? [result.outcome,result.reason,typeof result.exit_status === "number" ? "exit " + result.exit_status : ""].filter(Boolean).join(" · ") : "Task status unavailable"),style:{color:"secondary"}}));
-    content.push(literal("task-output",s.output || "Waiting for output…","Output"));
+    content.push(literal("task-output",s.output || (s.waiting || s.running ? "Waiting for output…" : result && result.outcome === "completed" ? "Completed with no output." : "No output was produced."),"Output"));
     if (s.truncated) content.push(c.text({id:"output-limit",text:"Showing the latest output; earlier text exceeded the display limit.",style:{color:"secondary"}}));
     if (!s.waiting && !s.running && s.catalogRefresh) content.push(buttons("task-controls",[["retry-catalog","Retry Catalog Update"],["local-catalog","Continue with Local Catalog"]]));
     else if (!s.waiting) content.push(buttons("task-controls",s.running ? [["stop","Stop"]] : [["back","Back to " + model.titles[model.sections.indexOf(s.returnTo && s.returnTo.section || s.section)]]]));
