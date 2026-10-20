@@ -3,8 +3,8 @@ const entryCommand = "brew.cleanup";
 // SPDX-License-Identifier: MIT
 // Presentation policy for Host-projected Homebrew objects. No process or I/O.
 const brewCatalog = (() => {
-  const sections = ["list","search","outdated","upgrade","update","adopt","services","tap","doctor","cleanup"];
-  const titles = ["Installed","Search","Available Upgrades","Upgrade All","Update Catalog","Adopt Apps","Services","Taps","Doctor","Clean Up"];
+  const sections = ["list","search","outdated","update","adopt","services","tap","doctor","cleanup"];
+  const titles = ["Installed","Search","Available Upgrades","Update Catalog","Adopt Apps","Services","Taps","Doctor","Clean Up"];
   const key = item => item.kind + ":" + item.name;
   function id(value) {
     let a = 2166136261, b = 5381;
@@ -77,6 +77,9 @@ const brewCatalog = (() => {
     caches:{},read:null,queue:[],error:"",notice:"",detail:null,preview:null,origin:null,
     taskID:null,waiting:false,admitted:false,running:false,seen:[],output:"",truncated:false,
     taskTitle:"",taskResult:null,returnTo:null,catalogRefresh:false,report:"doctor",tap:"",adoptionFilter:"available",rawReturn:null},state || {});
+  // Existing pinned views and task return routes use the surviving selection page.
+  for (const field of ["screen","section"]) if (s[field] === "upgrade") s[field] = "outdated";
+  if (s.returnTo && s.returnTo.section === "upgrade") s.returnTo = Object.assign({},s.returnTo,{section:"outdated"});
   const reset = [], cacheMemo = {};
   let operation;
   const busy = () => s.waiting || s.running;
@@ -114,12 +117,12 @@ const brewCatalog = (() => {
   }
   function refresh(section = s.section) {
     s.preview = null; s.error = "";
-    if (["outdated","upgrade"].includes(section) && s.caches.selection && !cached("selection")) { s.caches.selection = null; delete cacheMemo.selection; s.error = ""; }
+    if ((section === "outdated") && s.caches.selection && !cached("selection")) { s.caches.selection = null; delete cacheMemo.selection; s.error = ""; }
     if (["list","search"].includes(section)) {
       const requests = [read({operation:"installed"},"inventory","inventory")];
       if (section === "search" && model.queryValid(s.query.trim().toLowerCase())) requests.push(read({operation:"search",query:s.query.trim().toLowerCase()},"catalog","search"));
       request(requests);
-    } else if (["outdated","upgrade"].includes(section)) request([read({operation:"outdated"},"upgrades","upgrades")]);
+    } else if ((section === "outdated")) request([read({operation:"outdated"},"upgrades","upgrades")]);
     else if (section === "services") request([read({operation:"services"},"catalog","services")]);
     else if (section === "tap") request([read({operation:"taps"},"catalog","taps")]);
     else if (section === "adopt") request([read({operation:"adoptionCandidates"},"catalog","adoption")]);
@@ -134,7 +137,7 @@ const brewCatalog = (() => {
     s.kind = "both"; s.notice = ""; s.output = ""; s.truncated = false; s.report = "doctor";
     reset.push("section","query-" + section,"kind","report");
     s.error = "";
-    if (["outdated","upgrade","adopt","tap"].includes(section)) startTask({operation:"refreshCatalog"},"Updating Homebrew Catalog");
+    if (["outdated","adopt","tap"].includes(section)) startTask({operation:"refreshCatalog"},"Updating Homebrew Catalog");
     else refresh();
   }
   function finishCatalogRefresh(useLocal) {
@@ -193,8 +196,8 @@ const brewCatalog = (() => {
   function actOnPackage(action,item) {
     if (action === "details") details(item);
     else if (action === "activate") {
-      if (["outdated","upgrade"].includes(s.section) && item.pinned) packageTask("unpin",item);
-      else if (["outdated","upgrade"].includes(s.section) && !selected(item)) {
+      if ((s.section === "outdated") && item.pinned) packageTask("unpin",item);
+      else if ((s.section === "outdated") && !selected(item)) {
         const selection = cached("selection") || {excluded:[]};
         save("selection",{excluded:(selection.excluded || []).filter(name => name !== model.key(item))});
       }
@@ -242,16 +245,16 @@ const brewCatalog = (() => {
     // Returning after a Task always reads reality, including partial failure/Stop.
     if (s.screen === "tap-details") {
       if (s.taskResult || !cached("tap-details")) request([read({operation:"taps",tap:s.detail.tap},"catalog","tap-details")]);
-    } else if (s.taskResult || !cached(s.section === "list" ? "inventory" : s.section === "search" ? "search" : s.section === "outdated" || s.section === "upgrade" ? "upgrades" : s.section === "tap" ? "taps" : s.section === "adopt" ? "adoption" : s.section)) refresh();
+    } else if (s.taskResult || !cached(s.section === "list" ? "inventory" : s.section === "search" ? "search" : s.section === "outdated" ? "upgrades" : s.section === "tap" ? "taps" : s.section === "adopt" ? "adoption" : s.section)) refresh();
     s.taskResult = null;
   }
   function showRaw() {
     let input;
     if (s.screen === "details" && s.detail) input = {operation:"commandOutput",command:"info",kind:s.detail.kind,package:s.detail.name};
-    else if (["list","search","outdated","upgrade","services","tap"].includes(s.screen)) {
+    else if (["list","search","outdated","services","tap"].includes(s.screen)) {
       if (s.section === "search" && !model.queryValid(s.query.trim().toLowerCase())) return;
-      input = {operation:"commandOutput",command:s.section === "upgrade" ? "outdated" : s.section};
-      if (["list","search","outdated","upgrade"].includes(s.section) && s.kind !== "both") input.kind = s.kind;
+      input = {operation:"commandOutput",command:s.section};
+      if (["list","search","outdated"].includes(s.section) && s.kind !== "both") input.kind = s.kind;
       if (s.section === "search") input.package = s.query.trim().toLowerCase();
       if (s.section === "services") input.action = "list";
     }
@@ -315,10 +318,10 @@ const brewCatalog = (() => {
   }
 
   if (!busy() && e.type === "item_action" && e.collection === collectionID()) {
-    if (["list","search","outdated","upgrade"].includes(s.screen)) {
+    if (["list","search","outdated"].includes(s.screen)) {
       const item = currentPackages().items.find(item => e.item && model.id(model.key(item)) === e.item.id);
       if (item) {
-        if (e.action === "include" && ["outdated","upgrade"].includes(s.section) && !item.pinned) {
+        if (e.action === "include" && (s.section === "outdated") && !item.pinned) {
           const selection = cached("selection") || {excluded:[]}, excluded = new Set(selection.excluded || []), name = model.key(item);
           if (excluded.has(name)) excluded.delete(name); else excluded.add(name);
           save("selection",{excluded:[...excluded]});
@@ -369,14 +372,13 @@ const brewCatalog = (() => {
       else if (e.action === "update-catalog" && s.screen === "update") startTask({operation:"update"},"Update Homebrew and package catalogs");
       else if (e.action === "cleanup" && s.screen === "cleanup") startTask({operation:"cleanup",days:120},"Clean downloads older than 120 days");
       else if (e.action === "autoremove" && s.screen === "cleanup" && !s.read && autoremoveReady(cached("autoremove"))) startTask({operation:"autoremove"},"Remove unused dependencies");
-      else if (e.action === "upgrade-all" && s.screen === "upgrade") startTask(Object.assign({operation:"upgradeAll"},s.kind !== "both" ? {kind:s.kind} : {}),"Upgrade all eligible packages");
-      else if (["upgrade-formula","upgrade-cask"].includes(e.action) && ["outdated","upgrade"].includes(s.screen)) {
+      else if (["upgrade-formula","upgrade-cask"].includes(e.action) && (s.screen === "outdated")) {
         const kind = e.action === "upgrade-cask" ? "cask" : "formula";
         const chosen = currentPackages().items.filter(item => item.kind === kind && selected(item));
         if (chosen.length && chosen.length <= 50) startTask({operation:"upgradeSelected",kind,names:chosen.map(item => item.name)},"Upgrade " + chosen.length + " selected " + (kind === "cask" ? "apps" : "formulae"));
         else s.error = "Select between 1 and 50 unpinned packages of one kind for this upgrade.";
-      } else if (["select-all","select-none"].includes(e.action) && ["outdated","upgrade"].includes(s.screen)) save("selection",{excluded:e.action === "select-none" ? currentPackages().items.map(model.key) : []});
-      else if (["preview-formula","preview-cask"].includes(e.action) && ["outdated","upgrade"].includes(s.screen)) previewSelection(e.action === "preview-cask" ? "cask" : "formula");
+      } else if (["select-all","select-none"].includes(e.action) && (s.screen === "outdated")) save("selection",{excluded:e.action === "select-none" ? currentPackages().items.map(model.key) : []});
+      else if (["preview-formula","preview-cask"].includes(e.action) && (s.screen === "outdated")) previewSelection(e.action === "preview-cask" ? "cask" : "formula");
       else if (e.action === "add-tap" && s.screen === "tap" && model.tapValid(s.tap)) startTask({operation:"tap",tap:s.tap},"Add " + s.tap);
       else if (s.screen === "details" && ["install","upgrade","uninstall","pin","unpin"].includes(e.action)) {
         const item = detailItem(); if (item && model.actions(item).includes(e.action) || item && model.primary(item) === e.action) packageTask(e.action,item);
@@ -412,28 +414,28 @@ const brewCatalog = (() => {
     return c.text({id,text:raw.slice(-16000),title,format:"output"});
   }
   const content = [], sources = [];
-  if (!busy() && !["task","details","preview","tap-details","raw"].includes(s.screen)) content.push(c.row({id:"navigation",content:[c.choiceField({id:"section",title:"Homebrew",choices:model.sections,choiceTitles:model.titles,value:s.section}),buttons("refresh-controls",[["refresh","Refresh"]].concat(["list","outdated","upgrade","services","tap"].includes(s.screen) || s.screen === "search" && model.queryValid(s.query.trim().toLowerCase()) ? [["raw-output","Raw Output"]] : []))]}));
+  if (!busy() && !["task","details","preview","tap-details","raw"].includes(s.screen)) content.push(c.row({id:"navigation",content:[c.choiceField({id:"section",title:"Homebrew",choices:model.sections,choiceTitles:model.titles,value:s.section}),buttons("refresh-controls",[["refresh","Refresh"]].concat(["list","outdated","services","tap"].includes(s.screen) || s.screen === "search" && model.queryValid(s.query.trim().toLowerCase()) ? [["raw-output","Raw Output"]] : []))]}));
   if (["details","preview","tap-details","raw"].includes(s.screen)) content.push(buttons("back-controls",[["back","Back"]]));
   if (s.notice) content.push(c.text({id:"notice",text:model.text(s.notice),style:{color:"secondary"}}));
   if (s.read) content.push(c.text({id:"loading",text:s.read.purpose === "autoremove" ? "Checking unused dependencies…" : "Loading…",style:{color:"secondary"}}));
-  const browser = ["list","search","outdated","upgrade","services","tap","adopt"].includes(s.screen);
+  const browser = ["list","search","outdated","services","tap","adopt"].includes(s.screen);
   if (browser) {
     const bar = [c.textField({id:"query-" + s.section,title:s.screen === "search" ? "Search" : "Filter",value:s.query,placeholder:s.screen === "search" ? "Search packages…" : "Filter this list…",collection:collectionID()})];
-    if (["list","search","outdated","upgrade"].includes(s.screen)) bar.push(c.choiceField({id:"kind",title:"Packages",choices:["both","formula","cask"],choiceTitles:["All","Formulae","Cask Apps"],value:s.kind}));
+    if (["list","search","outdated"].includes(s.screen)) bar.push(c.choiceField({id:"kind",title:"Packages",choices:["both","formula","cask"],choiceTitles:["All","Formulae","Cask Apps"],value:s.kind}));
     content.push(c.row({id:"search-bar",content:bar}));
     let groups = [], actions = [], empty = s.read ? "Loading…" : "No results.", limited = false;
     const query = s.query.trim().toLowerCase();
-    if (["list","search","outdated","upgrade"].includes(s.screen)) {
+    if (["list","search","outdated"].includes(s.screen)) {
       const catalog = currentPackages();
       const items = catalog.items.filter(item => (s.kind === "both" || s.kind === item.kind) && (s.screen === "search" || [item.name,item.title,item.description].filter(Boolean).join(" ").toLowerCase().includes(query)));
       limited = !!(catalog.data && catalog.data.truncated);
       groups = model.grouped(items,item => model.group(item,s.screen)).map(group => Object.assign(group,{items:group.items.map(item => {
         const versions = item.installed_version && item.version && item.outdated ? item.installed_version + " → " + item.version : item.installed_version || item.version || "";
         const primary = model.primary(item);
-        return {id:model.id(model.key(item)),title:item.title || item.name,subtitle:[item.title && item.title !== item.name ? item.name : "",versions,item.description].filter(Boolean).join(" · ").slice(0,256),accessory:(["outdated","upgrade"].includes(s.section) && item.pinned ? "Unpin" : ["outdated","upgrade"].includes(s.section) && !selected(item) ? "Select" : item.pinned ? "Pinned" : primary === "details" ? item.isInstalled ? "Installed" : "Details" : primary === "install" ? "Install" : "Upgrade"),icon:{symbol:item.kind === "cask" ? "app" : "shippingbox"},actions:["outdated","upgrade"].includes(s.screen) ? ["activate","details",item.pinned ? "unpin" : "pin"].concat(item.pinned ? [] : ["include"]).concat(primary === "upgrade" ? ["preview"] : []) : model.actions(item),marks:["outdated","upgrade"].includes(s.screen) && selected(item) ? ["included"] : []};
+        return {id:model.id(model.key(item)),title:item.title || item.name,subtitle:[item.title && item.title !== item.name ? item.name : "",versions,item.description].filter(Boolean).join(" · ").slice(0,256),accessory:((s.section === "outdated") && item.pinned ? "Unpin" : (s.section === "outdated") && !selected(item) ? "Select" : item.pinned ? "Pinned" : primary === "details" ? item.isInstalled ? "Installed" : "Details" : primary === "install" ? "Install" : "Upgrade"),icon:{symbol:item.kind === "cask" ? "app" : "shippingbox"},actions:(s.screen === "outdated") ? ["activate","details",item.pinned ? "unpin" : "pin"].concat(item.pinned ? [] : ["include"]).concat(primary === "upgrade" ? ["preview"] : []) : model.actions(item),marks:(s.screen === "outdated") && selected(item) ? ["included"] : []};
       })}));
       actions = [c.itemAction({id:"activate",title:"Open",default:true}),c.itemAction({id:"details",title:"Show Details"})];
-      if (["outdated","upgrade"].includes(s.screen)) {
+      if ((s.screen === "outdated")) {
         actions.push(c.itemAction({id:"include",title:"Include in Upgrade",toggle:"included"}));
         const chosen = catalog.items.filter(selected), formulae = chosen.filter(item => item.kind === "formula"), casks = chosen.filter(item => item.kind === "cask");
         const upgradeButtons = [["select-all","Select All"],["select-none","Deselect All"]];
@@ -441,10 +443,9 @@ const brewCatalog = (() => {
         if (casks.length && casks.length <= 50) upgradeButtons.push(["upgrade-cask","Upgrade " + casks.length + " Cask Apps"],["preview-cask","Preview Cask Apps"]);
         content.push(buttons("selection-controls",upgradeButtons));
         content.push(c.text({id:"selection-help",text:"Pinned packages are excluded. Formulae and Cask Apps run as separate confirmed Tasks; each selection supports up to 50 packages.",style:{color:"secondary",fontSize:11}}));
-        if (s.screen === "upgrade") content.push(buttons("upgrade-all-controls",[["upgrade-all","Upgrade All…"]]));
       } else actions.push(c.itemAction({id:"uninstall",title:"Uninstall…"}));
       actions.push(c.itemAction({id:"pin",title:"Pin"}),c.itemAction({id:"unpin",title:"Unpin"}),c.itemAction({id:"preview",title:"Preview Changes"}));
-      empty = s.read ? "Loading packages…" : s.screen === "search" && query.length < 2 ? "Type at least two characters to search." : !catalog.data ? "Package data is unavailable. Refresh to retry." : ["outdated","upgrade"].includes(s.screen) ? "No available upgrades." : "No matching packages.";
+      empty = s.read ? "Loading packages…" : s.screen === "search" && query.length < 2 ? "Type at least two characters to search." : !catalog.data ? "Package data is unavailable. Refresh to retry." : (s.screen === "outdated") ? "No available upgrades." : "No matching packages.";
     } else if (s.screen === "services") {
       const data = cached("services"); limited = !!(data && data.truncated);
       const services = (data && data.services || []).filter(item => item.name.toLowerCase().includes(query));

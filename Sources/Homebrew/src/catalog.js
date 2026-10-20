@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Presentation policy for Host-projected Homebrew objects. No process or I/O.
 const brewCatalog = (() => {
-  const sections = ["list","search","outdated","upgrade","update","adopt","services","tap","doctor","cleanup"];
-  const titles = ["Installed","Search","Available Upgrades","Upgrade All","Update Catalog","Adopt Apps","Services","Taps","Doctor","Clean Up"];
+  const sections = ["list","search","outdated","update","adopt","services","tap","doctor","cleanup"];
+  const titles = ["Installed","Search","Available Upgrades","Update Catalog","Adopt Apps","Services","Taps","Doctor","Clean Up"];
   const key = item => item.kind + ":" + item.name;
   function id(value) {
     let a = 2166136261, b = 5381;

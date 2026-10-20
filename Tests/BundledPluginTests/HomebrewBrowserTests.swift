@@ -74,14 +74,14 @@ final class HomebrewTests: XCTestCase {
         return try render(event: .sourceDelivered(page: "homebrew-task", source: "brew-activities", sequence: 1, result: .array([task]), failure: nil), state: admitted.state)
     }
 
-    func testTenEntrypointsRefreshCatalogBeforeRelatedReads() throws {
+    func testNineEntrypointsRefreshCatalogBeforeRelatedReads() throws {
         let manifest = try plugin().manifest
-        XCTAssertEqual(manifest.version, "2.5.5"); XCTAssertEqual(manifest.apiLevel, 7)
-        XCTAssertEqual(manifest.commands.count, 10)
+        XCTAssertEqual(manifest.version, "2.5.6"); XCTAssertEqual(manifest.apiLevel, 7)
+        XCTAssertEqual(manifest.commands.count, 9)
         XCTAssertNil(manifest.scope(for: .controlExternalApp))
         for command in manifest.commands {
             let answer = try render(command.id.rawValue)
-            if ["brew.outdated","brew.upgrade","brew.adopt","brew.taps"].contains(command.id.rawValue) {
+            if ["brew.outdated","brew.adopt","brew.taps"].contains(command.id.rawValue) {
                 XCTAssertEqual(answer.operation?.input, .object(["tool": .string("homebrew"), "operation": .string("refreshCatalog")]))
                 XCTAssertFalse(answer.page?.sources.contains { $0.perform == "tools.read" } == true)
                 let completed = try finishCatalogRefresh(answer)
@@ -95,7 +95,7 @@ final class HomebrewTests: XCTestCase {
                 XCTAssertEqual(try source(answer).perform, "tools.read")
             }
         }
-        for retired in ["brew.open", "brew.vulnerabilities", "brew.services-menu", "brew.clear-cache", "brew.autoremove", "brew.install", "brew.uninstall", "brew.info", "brew.config", "brew.version", "brew.untap"] {
+        for retired in ["brew.upgrade", "brew.open", "brew.vulnerabilities", "brew.services-menu", "brew.clear-cache", "brew.autoremove", "brew.install", "brew.uninstall", "brew.info", "brew.config", "brew.version", "brew.untap"] {
             let target = try XCTUnwrap(manifest.migrations.renamedCommands[CommandID(retired)])
             XCTAssertTrue(manifest.commands.contains { $0.id == target })
         }
@@ -209,13 +209,23 @@ final class HomebrewTests: XCTestCase {
         let none = try press(narrowed, "select-none")
         XCTAssertNil(try press(none, "upgrade-formula").operation)
     }
-    func testUpgradeAllNeverRunsFromSourceDeliveryAndIgnoresOldPackageArguments() throws {
-        let opened = try open("brew.upgrade", input: .object(["package": .string("firefox")]))
-        XCTAssertNil(opened.operation)
-        let listed = try deliver(opened, data("outdated", [package("wget")]))
-        XCTAssertNil(listed.operation)
-        let run = try press(listed, "upgrade-all")
-        XCTAssertEqual(run.operation?.input, .object(["tool": .string("homebrew"), "operation": .string("upgradeAll")]))
+    func testRetiredGlobalUpgradeCannotStartFromNavigationOrStaleActions() throws {
+        let manifest = try plugin().manifest
+        XCTAssertFalse(manifest.commands.contains { $0.id.rawValue == "brew.upgrade" })
+        XCTAssertEqual(manifest.migrations.renamedCommands[CommandID("brew.upgrade")], CommandID("brew.outdated"))
+        XCTAssertFalse(manifest.scope(for: .runReviewedToolTasks)?.reviewedTools.first?.operations.contains("upgradeAll") == true)
+        let listed = try loaded("brew.outdated", packages: [package("wget")])
+        XCTAssertNil(listed.page?.component("upgrade-all-controls"))
+        guard case .choiceField(let section)? = listed.page?.component("section") else { return XCTFail("Missing navigation") }
+        XCTAssertFalse(section.choices.contains { $0.value == "upgrade" })
+        XCTAssertFalse(section.choices.contains { $0.title == "Upgrade All" })
+        XCTAssertNil(try press(listed, "upgrade-all").operation)
+        guard case .object(var legacy) = listed.state else { return XCTFail("Missing browser state") }
+        legacy["screen"] = .string("upgrade"); legacy["section"] = .string("upgrade")
+        let restored = try render(event: .sourceDelivered(page: "homebrew-upgrade", source: "retired", sequence: 1, result: .null, failure: nil), state: .object(legacy))
+        XCTAssertEqual(restored.page?.id, "homebrew-outdated")
+        XCTAssertNil(restored.page?.component("upgrade-all-controls"))
+        XCTAssertNil(restored.operation)
     }
     func testSilentCleanupCompletionDoesNotKeepWaitingForOutput() throws {
         let opened = try open("brew.cleanup")
@@ -429,7 +439,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertEqual(reinstall.operation?.input.value(atPointer:"/operation"),.string("install"))
     }
     func testExcludedUpgradePrimarySelectsBeforeAnotherGestureCanUpgrade() throws {
-        for command in ["brew.outdated", "brew.upgrade"] {
+        for command in ["brew.outdated"] {
             let listed = try loaded(command, packages: [package("wget"), package("pinned", "formula", ["pinned": .bool(true)])])
             let excluded = try row(listed, named: "wget", action: "include")
             XCTAssertEqual(excluded.page?.collection?.items.first(where: { $0.title == "wget" })?.accessory, "Select")
@@ -548,13 +558,14 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(try field(listed,"query-outdated","wget").operation)
         XCTAssertNil(try field(listed,"kind","formula").operation)
         XCTAssertNil(try row(listed,named:"wget",action:"include").operation)
-        let entered = try render(event:.pageFieldChanged(page:"homebrew-outdated",field:"section",values:.object(["section":.string("upgrade")])),state:listed.state)
+        let away = try field(listed,"section","list")
+        let entered = try render(event:.pageFieldChanged(page:"homebrew-list",field:"section",values:.object(["section":.string("outdated")])),state:away.state)
         XCTAssertEqual(entered.operation?.input.value(atPointer:"/operation"),.string("refreshCatalog"))
         let reopened = try render("brew.outdated",event:.called,state:listed.state)
         XCTAssertEqual(reopened.operation?.input.value(atPointer:"/operation"),.string("refreshCatalog"))
         let completed = try finishCatalogRefresh(entered)
         XCTAssertNil(completed.state.value(atPointer:"/caches/selection"))
-        XCTAssertEqual(completed.page?.reset?.resets("query-upgrade"),true)
+        XCTAssertEqual(completed.page?.reset?.resets("query-outdated"),true)
         XCTAssertEqual(completed.page?.reset?.resets("kind"),true)
         XCTAssertEqual(completed.page?.reset?.resets("section"),true)
         XCTAssertNil(completed.operation)

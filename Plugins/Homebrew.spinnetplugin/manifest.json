@@ -3,7 +3,7 @@
   "api_level": 7,
   "id": "com.spinnet.homebrew",
   "name": "Homebrew",
-  "version": "2.5.5",
+  "version": "2.5.6",
   "capabilities": [
     "read_reviewed_tools",
     "run_reviewed_tool_tasks"
@@ -18,7 +18,6 @@
         "brew.installed",
         "brew.search",
         "brew.outdated",
-        "brew.upgrade",
         "brew.update",
         "brew.adopt",
         "brew.services",
@@ -60,7 +59,6 @@
         "brew.installed",
         "brew.search",
         "brew.outdated",
-        "brew.upgrade",
         "brew.update",
         "brew.adopt",
         "brew.services",
@@ -74,7 +72,6 @@
           "operations": [
             "install",
             "upgrade",
-            "upgradeAll",
             "uninstall",
             "adopt",
             "tap",
@@ -133,13 +130,6 @@
       "script": "brew-outdated.js"
     },
     {
-      "id": "brew.upgrade",
-      "title": "Review All Upgrades",
-      "execution": "javascript",
-      "is_configurable": false,
-      "script": "brew-upgrade.js"
-    },
-    {
       "id": "brew.update",
       "title": "Update Catalog",
       "execution": "javascript",
@@ -194,7 +184,8 @@
       "brew.info": "brew.installed",
       "brew.config": "brew.doctor",
       "brew.version": "brew.doctor",
-      "brew.untap": "brew.taps"
+      "brew.untap": "brew.taps",
+      "brew.upgrade": "brew.outdated"
     }
   }
 }
