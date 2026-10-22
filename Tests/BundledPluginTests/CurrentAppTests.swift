@@ -28,10 +28,6 @@ final class CurrentAppTests: XCTestCase {
         return values[key]
     }
 
-    func text(_ json: JSONValue) throws -> String {
-        String(decoding: try JSONEncoder().encode(json), as: UTF8.self)
-    }
-
     func record(_ run: PluginTestRun, as name: String) throws {
         guard let path = ProcessInfo.processInfo.environment["CURRENT_APP_EVIDENCE"] else { return }
         let directory = URL(fileURLWithPath: path)

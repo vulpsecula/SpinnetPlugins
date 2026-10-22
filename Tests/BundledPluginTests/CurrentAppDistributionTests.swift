@@ -21,19 +21,4 @@ final class CurrentAppDistributionTests: XCTestCase {
             XCTAssertEqual(registry.availability(for: action), .unavailable(.capabilityDenied))
         }
     }
-
-    func testBundledCurrentAppKeepsAcceptedIdentityAndReviewsBeforeAnyExit() throws {
-        let plugin = try PluginUnderTest(named: "CurrentApp.spinnetplugin", origin: .bundled)
-        XCTAssertEqual(plugin.manifest.id.rawValue, "com.spinnet.probe.current-app")
-        XCTAssertEqual(plugin.manifest.apiLevel, 2)
-        XCTAssertTrue(plugin.manifest.candidateContracts.isEmpty)
-        let helper = try PluginTestHelper()
-        defer { helper.shutdown() }
-        let apps = RecordedApps()
-        let answer = try helper.run(PluginTestInvocation("current.close"), of: plugin,
-                                    answering: RecordedHostServices(apps: apps)).answer()
-        XCTAssertEqual(answer.page?.id, "current")
-        XCTAssertNil(answer.operation)
-        XCTAssertEqual(apps.exits, [])
-    }
 }

@@ -14,5 +14,5 @@ for path in (root.parent.parent / "Plugins/Homebrew.spinnetplugin").glob("brew*.
 for command, title, mode in entries:
     filename = "brew.js" if command == "brew.open" else command.replace(".", "-") + ".js"
     (root.parent.parent / "Plugins/Homebrew.spinnetplugin" / filename).write_text(
-        f"const entryMode = {json.dumps(mode)};\nconst entryCommand = {json.dumps(command)};\n" + source
+        f"const entryMode = {json.dumps(mode)};\n" + source
     )

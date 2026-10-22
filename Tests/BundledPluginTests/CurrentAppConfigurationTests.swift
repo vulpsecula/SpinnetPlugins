@@ -9,6 +9,9 @@ final class CurrentAppConfigurationTests: XCTestCase {
 
     func testCloseIsTheConfiguredPrimaryAndQuitAnAlternateButCallingEitherOnlyReviews() throws {
         let plugin = try plugin()
+        XCTAssertEqual(plugin.manifest.id.rawValue, "com.spinnet.probe.current-app")
+        XCTAssertEqual(plugin.manifest.apiLevel, 2)
+        XCTAssertTrue(plugin.manifest.candidateContracts.isEmpty)
         XCTAssertEqual(plugin.manifest.preset.defaultPrimaryCommandID?.rawValue, "current.close")
         XCTAssertEqual(plugin.manifest.preset.defaultAlternateCommandIDs.map(\.rawValue), ["current.quit", "current.inspect"])
         let helper = try PluginTestHelper()

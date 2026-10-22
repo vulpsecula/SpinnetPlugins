@@ -1,5 +1,4 @@
 const entryMode = "doctor";
-const entryCommand = "brew.doctor";
 // SPDX-License-Identifier: MIT
 // Presentation policy for Host-projected Homebrew objects. No process or I/O.
 const brewCatalog = (() => {
@@ -38,7 +37,7 @@ const brewCatalog = (() => {
     return [...new Set(result)];
   }
   function group(item, screen) {
-    if (screen === "outdated" || screen === "upgrade") return item.pinned ? "Pinned" : item.kind === "cask" ? "Cask Apps" : "Formulae";
+    if (screen === "outdated") return item.pinned ? "Pinned" : item.kind === "cask" ? "Cask Apps" : "Formulae";
     if (item.pinned) return item.kind === "cask" ? "Pinned Cask Apps" : "Pinned Formulae";
     if (item.kind === "cask") return "Cask Apps";
     return item.installed_as_dependency && !item.installed_on_request ? "Dependencies" : "Formulae";
@@ -65,7 +64,7 @@ const brewCatalog = (() => {
     }
     return copy;
   }
-  return {sections,titles,key,id,text,queryValid,tapValid,packages,primary,actions,group,grouped,byteLength,bounded};
+  return {sections,titles,key,id,text,queryValid,tapValid,packages,primary,actions,group,grouped,bounded};
 })();
 
 // SPDX-License-Identifier: MIT

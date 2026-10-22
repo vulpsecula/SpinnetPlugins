@@ -1,7 +1,10 @@
-Homebrew Plugin source: accepted independent proof #93, commit
-f6a9d91c96f12e0d23697f9802f3d29228483978, version 1.5.0.
-The generated JavaScript files are preserved byte-for-byte. Only the manifest
-migrates retired Candidate Contracts to stable Plugin API Level 3.
+Homebrew Plugin initial source: accepted independent proof #93, commit
+f6a9d91c96f12e0d23697f9802f3d29228483978, version 1.5.0, imported at f022673.
+The import preserved generated JavaScript and promoted retired Candidate
+Contracts to stable Plugin API Level 3. Later SpinnetPlugins commits changed
+the runtime and tests; the maintained package now uses stable Level 7.
+See Sources/Homebrew/PROVENANCE.md in the source repository for the history
+and deterministic entry-script generation.
 Copyright (c) 2026 Spinnet contributors. MIT; see LICENSE.
 
 Homebrew package metadata is supplied at runtime by Homebrew; vulnerability

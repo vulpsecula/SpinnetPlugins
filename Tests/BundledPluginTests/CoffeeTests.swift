@@ -97,8 +97,10 @@ final class CoffeeTests: XCTestCase {
         XCTAssertNil(answer.operation)
     }
 
-    func testRealHelperAnswersAreExportedForPublicSchemaValidation() throws {
-        guard let directory = ProcessInfo.processInfo.environment["COFFEE_ANSWERS_DIR"] else { return }
+    func testOptInExportOfRealHelperAnswersForPublicSchemaValidation() throws {
+        guard let directory = ProcessInfo.processInfo.environment["COFFEE_ANSWERS_DIR"], !directory.isEmpty else {
+            throw XCTSkip("Set COFFEE_ANSWERS_DIR to export real helper answers for a separate public-schema check")
+        }
         let root = URL(fileURLWithPath: directory)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let plugin = try PluginUnderTest(named: "KeepAwake.spinnetplugin"), helper = try PluginTestHelper()

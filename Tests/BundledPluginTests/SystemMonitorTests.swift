@@ -73,7 +73,7 @@ extension SystemMonitorTests {
         XCTAssertEqual(helper.launchCount, 1)
     }
 
-    func testActualNativeAdapterDropsLateAnswersAndMeasuresReadCost() throws {
+    func testActualNativeAdapterDropsLateAnswersWhenHiddenOrUnregistered() throws {
         let plugin = try PluginUnderTest(named: "SystemMonitor.spinnetplugin")
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
         let page = try PluginPage(parsing: loadedPage(plugin, helper), permits: helper.contracts.permitting(plugin.manifest))
@@ -103,10 +103,22 @@ extension SystemMonitorTests {
         engine.end(pluginID: plugin.manifest.id)
         let input: JSONValue = .object(["metrics": .array(["cpu","memory","disk","battery"].map(JSONValue.string))])
         let snapshot = try SystemMetricsSampler().read(input, owner: plugin.manifest.id)
+        XCTAssertEqual(snapshot.value(atPointer: "/memory/total_bytes"), .number(Double(ProcessInfo.processInfo.physicalMemory)))
+        XCTAssertLessThan(try JSONEncoder().encode(snapshot).count, 1024)
+    }
+
+    func testOptInNativeMetricsReadCost() throws {
+        guard ProcessInfo.processInfo.environment["SYSTEM_MONITOR_MEASURE"] == "1" else {
+            throw XCTSkip("Set SYSTEM_MONITOR_MEASURE=1 for the 1000-sample native metrics measurement")
+        }
+        let plugin = try PluginUnderTest(named: "SystemMonitor.spinnetplugin")
+        let input: JSONValue = .object(["metrics": .array(["cpu","memory","disk","battery"].map(JSONValue.string))])
+        let snapshot = try SystemMetricsSampler().read(input, owner: plugin.manifest.id)
         print("METRIC_SNAPSHOT \(String(decoding: try JSONEncoder().encode(snapshot), as: UTF8.self))")
         var times: [Double] = [], resultBytes = 0
         for _ in 0..<1000 {
             let start = DispatchTime.now().uptimeNanoseconds
+            // Each sample measures a fresh native sampler, as in the original proof.
             let result = try SystemMetricsSampler().read(input, owner: plugin.manifest.id)
             times.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1000)
             resultBytes = max(resultBytes, try JSONEncoder().encode(result).count)
@@ -114,7 +126,7 @@ extension SystemMonitorTests {
             XCTAssertLessThan(resultBytes, 1024)
         }
         times.sort()
-        print("METRIC_NATIVE_COST n=1000 p50_us=\(times[500]) p95_us=\(times[950]) max_us=\(times.last!) max_result_bytes=\(resultBytes) source_every_seconds=1")
+        print("METRIC_NATIVE_COST n=\(times.count) p50_us=\(times[times.count / 2]) p95_us=\(times[times.count * 95 / 100]) max_us=\(times.last!) max_result_bytes=\(resultBytes) source_every_seconds=1")
         print("METRIC_MACHINE \(ProcessInfo.processInfo.operatingSystemVersionString) cores=\(ProcessInfo.processInfo.processorCount) memory=\(ProcessInfo.processInfo.physicalMemory)")
     }
 }

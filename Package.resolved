@@ -1,13 +1,13 @@
 {
-  "pins": [
+  "pins" : [
     {
-      "identity": "spinnet",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/vulpsecula/Spinnet.git",
-      "state": {
-        "revision": "5bb2c12a3a02007b6918a9221e0a74dd3eb96d7d"
+      "identity" : "spinnet",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/vulpsecula/Spinnet.git",
+      "state" : {
+        "revision" : "0219cabb874593775c7d0762be5723b2392097a7"
       }
     }
   ],
-  "version": 2
+  "version" : 2
 }
