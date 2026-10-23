@@ -24,11 +24,38 @@ COFFEE_ANSWERS_DIR=/tmp/coffee-answers swift test --filter CoffeeTests.testOptIn
 SYSTEM_MONITOR_MEASURE=1 swift test --filter SystemMonitorTests.testOptInNativeMetricsReadCost
 ```
 
-The Coffee command exports five actual helper answers for a separate check
-against the pinned Host's public page and operation schemas; export alone does
-not validate them. The System Monitor command reports 1000 fresh native reads
+The Coffee command exports five actual helper answers. Validate that fresh export
+with the locked standard JSON Schema validator:
+
+```sh
+uv run --locked script/check_coffee_answers.py --answers-dir /tmp/coffee-answers
+```
+
+By default this checks the manifest, all five answers and requested operation
+inputs against the clean `.build/checkouts/Spinnet/PluginAPI` at the revision in
+`Package.resolved`. Run `swift package resolve` first on a clean checkout.
+For a joint change, explicitly pass `--host-plugin-api /path/to/Spinnet/PluginAPI`.
+Optional `format` annotations are not asserted. Unsupported ICU `pattern`
+expressions fail validation; this Python check does not establish Host acceptance.
+Export alone does not validate the answers. Neither export nor validation runs
+native keep-awake effects. The System Monitor command reports 1000 fresh native reads
 with p50/p95 timings and output sizes. Its normal functional test still checks
 late-answer rejection, physical-memory totals and the output-size bound.
+
+Check Homebrew's nine generated entry scripts and manifest IDs/scripts without
+writing files. After resolving the pinned dependency, exercise generation and
+schema validation failures and their write boundaries:
+
+```sh
+uv run --no-project python Sources/Homebrew/scripts/build.py --check
+uv run --no-project python -B -m unittest discover -s script/tests -v
+```
+
+Run the generator without `--check` after editing `Sources/Homebrew/`; it also
+removes retired `brew*.js` entry scripts. Both tools resolve repository paths
+from their own location, so they also work when invoked from another directory.
+For JavaScript syntax, run `node --check` on the generated entries.
+Native resource measurements remain opt-in.
 
 Plugin workflow and package behaviour live here. The Host repository owns
 authority checks, native rendering and the public [Documented Plugin
