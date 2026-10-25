@@ -48,7 +48,7 @@ schema validation failures and their write boundaries:
 
 ```sh
 uv run --no-project python Sources/Homebrew/scripts/build.py --check
-uv run --no-project python -B -m unittest discover -s script/tests -v
+uv run --no-project python -B -m unittest discover -s Tests/Tooling -v
 ```
 
 Run the generator without `--check` after editing `Sources/Homebrew/`; it also

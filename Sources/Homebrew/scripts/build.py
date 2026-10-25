@@ -15,7 +15,7 @@ def generated_entries():
     entries = json.loads((ROOT / "scripts/entries.json").read_text())
     generated = {}
     scripts_by_id = {}
-    for command, _title, mode in entries:
+    for command, mode in entries:
         filename = "brew.js" if command == "brew.open" else command.replace(".", "-") + ".js"
         if command in scripts_by_id or filename in generated:
             raise ValueError(f"Duplicate entry ID or script: {command}")

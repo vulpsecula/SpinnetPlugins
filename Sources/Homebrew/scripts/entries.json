@@ -1,47 +1,38 @@
 [
   [
     "brew.installed",
-    "Show Installed",
     "list"
   ],
   [
     "brew.search",
-    "Search Packages",
     "search"
   ],
   [
     "brew.outdated",
-    "Available Updates",
     "outdated"
   ],
   [
     "brew.update",
-    "Update Catalog",
     "update"
   ],
   [
     "brew.adopt",
-    "Adopt Apps",
     "adopt"
   ],
   [
     "brew.services",
-    "Manage Services",
     "services"
   ],
   [
     "brew.taps",
-    "Manage Package Sources",
     "tap"
   ],
   [
     "brew.doctor",
-    "Run Doctor",
     "doctor"
   ],
   [
     "brew.cleanup",
-    "Clean Up",
     "cleanup"
   ]
 ]
