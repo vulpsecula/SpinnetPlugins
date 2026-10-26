@@ -1,6 +1,6 @@
 {
   "protocol_version": "1.0",
-  "api_level": 1,
+  "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.builtin.paste",
   "name": "Paste",
   "version": "1.0.0",
@@ -15,7 +15,7 @@
       "title": "Paste",
       "execution": "host",
       "is_configurable": false,
-      "host_command": "clipboard.paste"
+      "host_command": "selection.paste"
     }
   ]
 }

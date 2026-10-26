@@ -19,7 +19,7 @@
   }
 
   const [first, second] = parse(input);
-  const window = requestHostService("read_focused_window");
+  const window = requestHostService("window.read");
   const screen = window.visibleFrame;
   const right = screen.x + screen.width;
   const bottom = screen.y + screen.height;
@@ -53,7 +53,7 @@
     default:
       throw new Error("Unknown Window Position Command " + commandID);
   }
-  requestHostService("set_focused_window_frame", {
+  requestHostService("window.setFrame", {
     x: frame.x, y: frame.y, width: frame.width, height: frame.height
   });
   return null;

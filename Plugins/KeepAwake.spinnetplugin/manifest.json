@@ -1,6 +1,6 @@
 {
   "protocol_version": "1.0",
-  "api_level": 2,
+  "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.coffee",
   "name": "Keep Awake",
   "version": "1.0.3",

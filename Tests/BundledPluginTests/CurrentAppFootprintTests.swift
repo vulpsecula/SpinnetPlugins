@@ -25,7 +25,7 @@ final class CurrentAppFootprintTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         try Data("""
-        {"protocol_version":"1.0","api_level":2,"id":"com.spinnet.probe.empty","name":"Empty",
+        {"protocol_version":"1.0","engines":{"spinnet":"^1.0.0"},"id":"com.spinnet.probe.empty","name":"Empty",
          "version":"1.0.0","capabilities":[],"preset":{"readiness":"ready_to_use","is_configurable":false,
          "default_primary_command_id":"empty","default_alternate_command_ids":[]},"commands":[{"id":"empty",
          "title":"Empty","description":"Empty helper baseline","execution":"javascript","is_configurable":false,"script":"empty.js"}]}

@@ -90,8 +90,8 @@ extension SpotifyPluginTests {
             XCTAssertEqual(grants.decision(for: manifest.id, pluginVersion: manifest.version, capability: capability,
                 scope: manifest.scope(for: capability)), .notDetermined)
         }
-        XCTAssertTrue(manifest.candidateContracts.isEmpty)
-        XCTAssertEqual(manifest.apiLevel, 3)
+
+        XCTAssertEqual(manifest.hostCompatibility.rawValue, "^1.0.0")
         for filename in ["manifest.json", "actions.js"] {
             XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent(filename)),
                 try Data(contentsOf: installed.rootURL.appendingPathComponent(filename)))
@@ -255,29 +255,37 @@ extension SpotifyPluginTests {
     private func legacyPackage() throws -> PluginPackage {
         let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures/Spotify/spotify-1.0-manifest.json")
-        let manifest = try JSONDecoder().decode(PluginManifest.self, from: Data(contentsOf: fixture))
+        let manifest = try historicalManifestForDataComparison(fixture)
         return PluginPackage(rootURL: directory, manifest: manifest, origin: .installed)
     }
 
 
-    func testOlderHostRefusesStableLevelThreeUpdateWithoutReplacingTheExistingPlugin() throws {
+    func testIncompatibleUpdateNeverReplacesExistingPackageOrStartsAHelper() throws {
         let legacy = try legacyPackage()
-        let current = try PluginUnderTest(packageAt: directory)
-        let oldContracts = PluginInterfaceContracts(levels: PluginInterfaceContracts.host.levels.filter { $0.key <= 2 },
-            candidates: [])
-        let grants = PluginCapabilityGrantStore()
-        let registry = PluginRegistry(contracts: oldContracts, grantStore: grants)
-        try registry.register(legacy)
         let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: sandbox) }
-        let store = PluginInstallationStore(directory: sandbox, registry: registry, grants: grants, persistGrants: {})
-        XCTAssertThrowsError(try store.install(from: directory)) { error in
-            XCTAssertTrue(String(describing: error).contains("3"))
+        let incoming = sandbox.appendingPathComponent("Incoming.spinnetplugin")
+        try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: directory, to: incoming)
+        let manifestURL = incoming.appendingPathComponent("manifest.json")
+        var manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any])
+        manifest["engines"] = ["spinnet": "^2.0.0"]
+        try JSONSerialization.data(withJSONObject: manifest).write(to: manifestURL)
+        let grants = PluginCapabilityGrantStore()
+        let registry = PluginRegistry(grantStore: grants)
+        try registry.register(legacy)
+        let store = PluginInstallationStore(directory: sandbox.appendingPathComponent("Installed"),
+            registry: registry, grants: grants, persistGrants: {})
+        XCTAssertThrowsError(try store.install(from: incoming)) { error in
+            XCTAssertTrue(error is UnsupportedPluginHostVersion, "\(error)")
         }
         XCTAssertEqual(registry.package(for: legacy.manifest.id)?.manifest.version, "1.0.0")
+        let current = try PluginUnderTest(packageAt: directory)
         XCTAssertEqual(grants.decision(for: current.manifest.id, pluginVersion: current.manifest.version,
             capability: .controlExternalApp, scope: current.manifest.scope(for: .controlExternalApp)), .notDetermined)
-        let helper = try PluginTestHelper(contracts: oldContracts); defer { helper.shutdown() }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sandbox.appendingPathComponent("Installed").path))
+        let oldHost = PluginInterfaceContracts(hostVersion: try HostVersion("0.9.0"))
+        let helper = try PluginTestHelper(contracts: oldHost); defer { helper.shutdown() }
         let run = helper.run(PluginTestInvocation("spotify.toggle"), of: current, answering: RecordedHostServices())
         XCTAssertThrowsError(try run.answer())
         XCTAssertTrue(run.requests.isEmpty)
@@ -435,7 +443,7 @@ extension SpotifyPluginTests {
     func testRemovedGUIActionRemainsUnavailableAndUserConfigurationIsNotRemapped() throws {
         let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures/Spotify/spotify-1.1.1-manifest.json")
-        let previous = try JSONDecoder().decode(PluginManifest.self, from: Data(contentsOf: fixture))
+        let previous = try historicalManifestForDataComparison(fixture)
         let registry = try connectedRegistry()
         let oldGUI = try ActionConfiguration(id: ActionID("existing-gui-action"), pluginID: previous.id,
             command: XCTUnwrap(previous.commands.first { $0.id.rawValue == "spotify.show" }), input: .null)
@@ -447,8 +455,8 @@ extension SpotifyPluginTests {
         let configuration = try HostConfiguration(actions: [oldGUI] + oldControls, menu: MenuConfiguration(items: [item]))
         let editor = HostConfigurationEditor(registry: registry, configuration: configuration)
         let current = try PluginUnderTest(packageAt: directory)
-        // Historical candidate manifests are retired. Saved Action records still
-        // restore against the stable package without rewriting user configuration.
+        // Saved Actions reconstructed from frozen historical data restore against
+        // the compatible package without rewriting user configuration.
         try registry.register(current.package)
         XCTAssertEqual(editor.configuration, configuration)
         XCTAssertEqual(registry.availability(for: oldGUI), .unavailable(.commandMissing))
@@ -491,4 +499,15 @@ extension SpotifyPluginTests {
             }
         }
     }
+}
+
+
+/// Frozen manifests are never admitted as packages. These tests compare their
+/// old Action definitions and Capability scopes with current data only.
+private func historicalManifestForDataComparison(_ url: URL) throws -> PluginManifest {
+    var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    json.removeValue(forKey: "api_level")
+    json.removeValue(forKey: "candidate_contracts")
+    json["engines"] = ["spinnet": "^1.0.0"]
+    return try JSONDecoder().decode(PluginManifest.self, from: JSONSerialization.data(withJSONObject: json))
 }

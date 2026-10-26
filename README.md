@@ -59,10 +59,11 @@ Native resource measurements remain opt-in.
 
 Plugin workflow and package behaviour live here. The Host repository owns
 authority checks, native rendering and the public [Documented Plugin
-Interface](https://github.com/vulpsecula/Spinnet/tree/main/PluginAPI). Choose a
-stable Plugin API Level supported by the pinned Host; the current Host supports
-Levels 1–7. Adaptive cards, External App connections and unused-dependency Tasks
-are stable from Level 3. Exact retired candidate declarations are refused.
+Interface](https://github.com/vulpsecula/Spinnet/tree/main/PluginAPI). Each current
+package declares `"engines": {"spinnet": "^1.0.0"}` and uses the single current
+catalogue, SDK and schemas. Only caret `^M.m.p` and exact `M.m.p` compatibility
+ranges are supported. Legacy `api_level` and `candidate_contracts` declarations
+are refused; package versions and test dependency pins remain independent.
 
 To try a Host change together with a Plugin change, edit this package's SwiftPM
 dependency locally (or use `swift package edit Spinnet --path /path/to/Spinnet`),
@@ -78,10 +79,10 @@ that revision; it does not follow a branch or a tag. Neither repository contains
 a git submodule or a git dependency on the other in the reverse direction.
 
 For a new Bundled Plugin, add its normally installable package under `Plugins/`,
-declare stable contracts, preserve IDs and exact upstream notices, and add public
+declare Host compatibility, preserve IDs and exact upstream notices, and add public
 kit tests here. Host lock updates and shipped regression coverage belong in the
-Host repository. Bundled identity grants no extra authority. A candidate-only
-probe must stabilize before onboarding; Emoji remains an external proof workload.
+Host repository. Bundled identity grants no extra authority; additions need an
+implemented public contract before onboarding. Emoji remains an external proof workload.
 
 Homebrew package changes request Host-owned Tasks; the Plugin supplies neither
 shell commands nor passwords. The current Host runs native Homebrew as the user,

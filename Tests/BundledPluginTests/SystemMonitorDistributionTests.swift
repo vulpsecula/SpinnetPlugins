@@ -7,8 +7,8 @@ final class SystemMonitorDistributionTests: XCTestCase {
         for origin: PluginOrigin in [.bundled, .installed] {
             let plugin = try PluginUnderTest(named: "SystemMonitor.spinnetplugin", origin: origin)
             XCTAssertEqual(plugin.manifest.id.rawValue, "com.spinnet.system-monitor")
-            XCTAssertEqual(plugin.manifest.apiLevel, 3)
-            XCTAssertTrue(plugin.manifest.candidateContracts.isEmpty)
+            XCTAssertEqual(plugin.manifest.hostCompatibility.rawValue, "^1.0.0")
+
             XCTAssertEqual(plugin.manifest.capabilities, [.readSystemStatus])
             let grants = PluginCapabilityGrantStore()
             let registry = PluginRegistry(grantStore: grants)

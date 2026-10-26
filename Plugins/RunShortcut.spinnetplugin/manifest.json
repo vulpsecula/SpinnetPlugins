@@ -1,6 +1,6 @@
 {
   "protocol_version": "1.0",
-  "api_level": 1,
+  "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.builtin.run-shortcut",
   "name": "Run Shortcut",
   "version": "1.0.0",
@@ -15,7 +15,12 @@
       "title": "Run Shortcut",
       "execution": "host",
       "is_configurable": true,
-      "host_command": "shortcut.invoke"
+      "host_command": "system.runShortcut",
+      "configuration_field": {
+        "kind": "shortcut",
+        "title": "Shortcut",
+        "placeholder": "Shortcut name"
+      }
     }
   ]
 }

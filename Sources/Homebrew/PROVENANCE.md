@@ -10,7 +10,7 @@ The independent history was recovered at
 absent, so the import does not claim to recreate that history.
 
 Subsequent repository commits changed the runtime, entrypoints and tests.
-The current package uses stable Plugin API Level 7 and package browsers with
+The current package requires Spinnet `^1.0.0` and uses package browsers with
 contextual actions, Host-owned Tasks and native output. The maintained source is
 `src/catalog.js` and `src/homebrew.js`; `scripts/build.py` generates the nine
 entry scripts listed in `scripts/entries.json`. Current public-helper coverage

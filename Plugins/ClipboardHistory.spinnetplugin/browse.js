@@ -1,4 +1,4 @@
 (() => {
-  requestHostService("present_clipboard_history");
+  requestHostService("clipboardHistory.show");
   return null;
 })()

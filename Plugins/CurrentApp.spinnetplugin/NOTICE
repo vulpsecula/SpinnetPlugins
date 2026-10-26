@@ -1,5 +1,5 @@
 Current App is original Plugin code written against Spinnet's published
-Plugin API Level 2. No Host source, SDK implementation, third-party data,
+Documented Plugin Interface. No Host source, SDK implementation, third-party data,
 icons, fonts or App-specific rules are included in this package.
 
 The development harness depends on the Spinnet public test kit and helper

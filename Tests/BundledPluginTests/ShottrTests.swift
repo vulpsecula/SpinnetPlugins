@@ -53,9 +53,18 @@ private enum ShottrPluginFixture {
 
 /// Every other Host Command fails, so a Shottr Command can only have run
 /// through its Deep Link Template.
-private struct NoHostCommands: HostCommandExecutor {
+private struct NoHostCommands: CatalogueCommandExecutor {
     func execute(_ action: ActionConfiguration) throws -> JSONValue {
         throw HostCommandExecutionError.unavailable("Only Deep Link Templates run in these tests")
+    }
+    func perform(_ command: HostCommand, input: JSONValue, for action: ActionConfiguration, in package: PluginPackage) throws -> JSONValue {
+        throw HostCommandExecutionError.unavailable("Only Deep Link Templates run in these tests")
+    }
+    func showToast(_ text: String, for action: ActionConfiguration) throws {
+        XCTFail("Shottr does not show Host toast Commands")
+    }
+    func showPluginSettings(for action: ActionConfiguration) throws {
+        XCTFail("Shottr does not open settings as its capture action")
     }
 }
 
@@ -90,7 +99,7 @@ final class ShottrTests: XCTestCase {
             ]
         )
         XCTAssertTrue(package.manifest.commands.allSatisfy {
-            $0.execution == .host && $0.hostCommand == .openDeepLink && $0.script == nil
+            $0.execution == .host && $0.hostServiceID == "apps.openDeepLink" && $0.script == nil
         })
         XCTAssertFalse(FileManager.default.fileExists(atPath: package.rootURL.appendingPathComponent("capture.js").path))
         XCTAssertFalse(package.manifest.capabilities.contains(.captureScreen))

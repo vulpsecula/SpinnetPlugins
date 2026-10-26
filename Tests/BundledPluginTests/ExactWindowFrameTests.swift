@@ -104,7 +104,7 @@ final class ExactWindowFrameConfigurationTests: XCTestCase {
         func manifest(_ size: String) -> Data {
             Data("""
             {
-              "protocol_version": "1.0", "id": "com.example.sizer", "name": "Sizer", "version": "1.0.0",
+              "protocol_version": "1.0", "engines": {"spinnet": "^1.0.0"}, "id": "com.example.sizer", "name": "Sizer", "version": "1.0.0",
               "capabilities": ["position_focused_window"],
               "preset": {"readiness": "ready_to_use", "is_configurable": true,
                          "default_primary_command_id": "resize", "default_inputs": {"resize": "\(size)"}},

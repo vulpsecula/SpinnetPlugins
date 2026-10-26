@@ -1,7 +1,7 @@
 (() => {
   // The Host reports the focused window and the part of its screen windows
   // may occupy; each Command is a layout within that visible frame.
-  const window = requestHostService("read_focused_window");
+  const window = requestHostService("window.read");
   const screen = window.visibleFrame;
 
   // Cells [first, last] of `count` equal parts of a span. Every boundary rounds
@@ -91,7 +91,7 @@
     throw new Error("Unknown Window Position Command " + commandID);
   }
   const frame = layouts[commandID]();
-  requestHostService("set_focused_window_frame", {
+  requestHostService("window.setFrame", {
     x: frame.x, y: frame.y, width: frame.width, height: frame.height
   });
   return null;

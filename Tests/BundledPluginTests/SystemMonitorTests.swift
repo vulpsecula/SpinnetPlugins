@@ -161,8 +161,8 @@ extension SystemMonitorTests {
 extension SystemMonitorTests {
     func testStableAdaptiveCardsPreserveTheVisibleSourceAndBindings() throws {
         let plugin = try PluginUnderTest(named: "SystemMonitor.spinnetplugin")
-        XCTAssertEqual(plugin.manifest.apiLevel, 3)
-        XCTAssertTrue(plugin.manifest.candidateContracts.isEmpty)
+        XCTAssertEqual(plugin.manifest.hostCompatibility.rawValue, "^1.0.0")
+
         let helper = try PluginTestHelper(); defer { helper.shutdown() }
         let page = PluginTestPage("monitor.show", of: plugin, helper: helper)
         try page.open()
@@ -195,35 +195,34 @@ extension SystemMonitorTests {
 
 
 extension SystemMonitorTests {
-    func testLevelTwoHostRefusesTheStableLevelThreePackageBeforeInstallation() throws {
+    func testIncompatibleHostRefusesThePackageBeforeInstallation() throws {
         let plugin = try PluginUnderTest(named: "SystemMonitor.spinnetplugin")
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let oldHost = PluginInterfaceContracts(levels: PluginInterfaceContracts.host.levels.filter { $0.key <= 2 })
+        let oldHost = PluginInterfaceContracts(hostVersion: try HostVersion("0.9.0"))
         let registry = PluginRegistry(contracts: oldHost)
         let installer = PluginInstallationStore(directory: directory, registry: registry,
             grants: PluginCapabilityGrantStore(), persistGrants: {})
         XCTAssertThrowsError(try installer.review(plugin.package.rootURL)) { error in
-            XCTAssertEqual(error as? UnsupportedPluginAPILevel, UnsupportedPluginAPILevel(requiredBy: plugin.manifest, supportedLevel: 2))
+            XCTAssertEqual(error as? UnsupportedPluginHostVersion, UnsupportedPluginHostVersion(requiredBy: plugin.manifest, hostVersion: try! HostVersion("0.9.0")))
         }
         XCTAssertNil(registry.package(for: plugin.manifest.id))
     }
 
-    func testAdaptiveBuilderRemainsUnavailableToAnOtherwiseIdenticalLevelTwoPlugin() throws {
+    func testRetiredAPIDeclarationIsRefusedBeforeAnyHelperLaunch() throws {
         let source = try PluginUnderTest(named: "SystemMonitor.spinnetplugin")
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         try FileManager.default.copyItem(at: source.package.rootURL, to: directory)
         let manifestURL = directory.appendingPathComponent("manifest.json")
         var manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any])
-        manifest["api_level"] = 2
-        manifest.removeValue(forKey: "candidate_contracts")
+        manifest["api_level"] = NSNull()
         try JSONSerialization.data(withJSONObject: manifest).write(to: manifestURL)
-        let undeclared = try PluginUnderTest(packageAt: directory)
-        let helper = try PluginTestHelper(); defer { helper.shutdown() }
-        XCTAssertThrowsError(try helper.run(PluginTestInvocation("monitor.show"), of: undeclared, answering: RecordedHostServices()).answer()) { error in
-            XCTAssertTrue(String(describing: error).contains("adaptive"), "The absent candidate member must explain the refusal: \(error)")
+        XCTAssertThrowsError(try PluginUnderTest(packageAt: directory)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("api_level"), "\(error)")
         }
+        let helper = try PluginTestHelper(); defer { helper.shutdown() }
+        XCTAssertEqual(helper.launchCount, 0)
     }
 }
 
@@ -267,22 +266,20 @@ extension SystemMonitorTests {
 }
 
 extension SystemMonitorTests {
-    func testHistoricalCandidatePackageIsRefusedAfterStablePromotion() throws {
+    func testHistoricalCandidateDeclarationIsRefusedDespiteCurrentCompatibility() throws {
         let plugin = try PluginUnderTest(named: "SystemMonitor.spinnetplugin")
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         try FileManager.default.copyItem(at: plugin.package.rootURL, to: directory)
         let manifestURL = directory.appendingPathComponent("manifest.json")
         var manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any])
-        manifest["api_level"] = 2
         manifest["candidate_contracts"] = [["name": "adaptive_layout", "revision": 2]]
         try JSONSerialization.data(withJSONObject: manifest).write(to: manifestURL)
         let registry = PluginRegistry()
         let installer = PluginInstallationStore(directory: directory.appendingPathComponent("Installed"), registry: registry,
             grants: PluginCapabilityGrantStore(), persistGrants: {})
         XCTAssertThrowsError(try installer.review(directory)) { error in
-            XCTAssertEqual(error as? CandidateContractRefusal, .retired(plugin: "System Monitor",
-                declared: CandidateContractRevision(name: "adaptive_layout", revision: 2), promotedToLevel: 3))
+            XCTAssertTrue(error.localizedDescription.contains("candidate_contracts"), "\(error)")
         }
         XCTAssertNil(registry.package(for: plugin.manifest.id))
     }

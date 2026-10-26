@@ -1,6 +1,7 @@
 """Exercise the generator CLI on disposable copies, including failure and write boundaries."""
 
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -78,8 +79,10 @@ class CoffeeSchemaChecks(unittest.TestCase):
         self.script = ROOT / "script/check_coffee_answers.py"
 
     def check(self, *arguments, script=None):
+        public = os.environ.get("SPINNET_TEST_HOST_PLUGIN_API")
+        extra = ["--host-plugin-api", public] if public and script is None else []
         return subprocess.run(["uv", "run", "--locked", str(script or self.script),
-                               "--answers-dir", str(self.answers), *arguments],
+                               "--answers-dir", str(self.answers), *extra, *arguments],
                               cwd=self.temporary.name, capture_output=True, text=True)
 
     def test_missing_exports_are_an_error(self):

@@ -1,6 +1,6 @@
 {
   "protocol_version": "1.0",
-  "api_level": 1,
+  "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.window-position",
   "name": "Window Position",
   "version": "1.0.0",

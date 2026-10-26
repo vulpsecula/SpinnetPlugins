@@ -240,7 +240,7 @@ final class WindowPositionTests: XCTestCase {
         func manifest(scope: String) -> Data {
             Data("""
             {
-              "protocol_version": "1.0", "id": "com.example.mover", "name": "Mover", "version": "1.0.0",
+              "protocol_version": "1.0", "engines": {"spinnet": "^1.0.0"}, "id": "com.example.mover", "name": "Mover", "version": "1.0.0",
               "capabilities": ["position_focused_window"],
               "capability_scopes": [\(scope)],
               "commands": [{"id": "move", "title": "Move", "execution": "javascript", "is_configurable": false, "script": "move.js"}]

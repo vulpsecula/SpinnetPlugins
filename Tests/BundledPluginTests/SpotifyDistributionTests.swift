@@ -7,8 +7,8 @@ final class SpotifyDistributionTests: XCTestCase {
         let plugin = try PluginUnderTest(named: "Spotify.spinnetplugin", origin: .bundled)
         XCTAssertEqual(plugin.manifest.id.rawValue, "com.spinnet.external.spotify")
         XCTAssertEqual(plugin.manifest.version, "1.2.0")
-        XCTAssertEqual(plugin.manifest.apiLevel, 3)
-        XCTAssertTrue(plugin.manifest.candidateContracts.isEmpty)
+        XCTAssertEqual(plugin.manifest.hostCompatibility.rawValue, "^1.0.0")
+
         XCTAssertEqual(plugin.manifest.commands.count, 9)
     }
 

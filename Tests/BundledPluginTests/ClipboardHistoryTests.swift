@@ -47,7 +47,7 @@ final class ClipboardHistoryTests: XCTestCase {
             let browsed = helper.run(PluginTestInvocation("history.browse"), of: plugin, answering: broker)
 
             XCTAssertEqual(try browsed.result.get(), .null, "\(origin): the Plugin learns nothing from the window")
-            XCTAssertEqual(browsed.requests, [PluginTestRequest(service: .presentClipboardHistory, input: .null)])
+            XCTAssertEqual(browsed.requests, [PluginTestRequest(service: .presentClipboardHistory, input: .null, operation: "clipboardHistory.show")])
             XCTAssertEqual(presented.map(\.plugin), [plugin.manifest.id], "\(origin)")
             XCTAssertEqual(presented.map(\.action), [ActionID("history.browse")], "\(origin)")
         }

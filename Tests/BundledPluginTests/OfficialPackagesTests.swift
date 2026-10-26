@@ -22,8 +22,24 @@ final class OfficialPackagesTests: XCTestCase {
         ])
         XCTAssertEqual(packages.count, 22)
         for plugin in packages {
-            XCTAssertTrue(plugin.manifest.candidateContracts.isEmpty, plugin.manifest.id.rawValue)
-            XCTAssertLessThanOrEqual(plugin.manifest.apiLevel, PluginAPILevel.highestSupported)
+            XCTAssertEqual(plugin.manifest.hostCompatibility.rawValue, "^1.0.0", plugin.manifest.id.rawValue)
+            XCTAssertTrue(plugin.manifest.hostCompatibility.contains(.current))
+        }
+    }
+
+    func testCatalogueCommandsPreserveTheirNativeConfigurationEditors() throws {
+        let expected: [(String, CommandConfigurationFieldKind)] = [
+            ("OpenURL", .url), ("OpenApplication", .application), ("OpenFile", .file),
+            ("OpenFolder", .folder), ("RunKeyboardShortcut", .keyboardShortcut),
+            ("RunShortcut", .shortcut), ("RunMacOSService", .text)
+        ]
+        for (name, kind) in expected {
+            let plugin = try PluginUnderTest(named: name + ".spinnetplugin")
+            let command = try XCTUnwrap(plugin.manifest.commands.first)
+            XCTAssertNil(command.hostCommand, name)
+            XCTAssertNotNil(command.hostServiceID, name)
+            XCTAssertEqual(command.configurationField?.kind, kind, name)
+            XCTAssertFalse(try XCTUnwrap(command.configurationField?.title).isEmpty, name)
         }
     }
 }

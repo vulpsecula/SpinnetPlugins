@@ -1,6 +1,6 @@
 {
   "protocol_version": "1.0",
-  "api_level": 3,
+  "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.external.spotify",
   "name": "Spotify",
   "version": "1.2.0",

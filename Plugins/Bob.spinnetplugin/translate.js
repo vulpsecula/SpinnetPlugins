@@ -17,7 +17,7 @@
   let text = input;
   if (operation === "selectionTranslate") {
     // null means the Host could not read the selection, so Bob tries itself.
-    const selection = requestHostService("read_selected_text", { best_effort: true });
+    const selection = requestHostService("selection.readText", { best_effort: true });
     if (typeof selection === "string") {
       operation = selection.trim() ? "translateText" : "inputTranslate";
       text = selection;
@@ -30,6 +30,6 @@
     request.arguments = { text };
   }
 
-  requestHostService("perform_app_operation", request);
+  requestHostService("apps.perform", request);
   return null;
 })()

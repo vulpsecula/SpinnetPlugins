@@ -1,6 +1,6 @@
 {
   "protocol_version": "1.0",
-  "api_level": 1,
+  "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.builtin.open-folder",
   "name": "Open Folder",
   "version": "1.0.0",
@@ -15,7 +15,12 @@
       "title": "Open Folder",
       "execution": "host",
       "is_configurable": true,
-      "host_command": "folder.open"
+      "host_command": "open.path",
+      "configuration_field": {
+        "kind": "folder",
+        "title": "Folder",
+        "placeholder": "Folder path"
+      }
     }
   ]
 }

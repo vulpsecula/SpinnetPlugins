@@ -1,6 +1,6 @@
 {
   "protocol_version": "1.0",
-  "api_level": 1,
+  "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.builtin.open-file",
   "name": "Open File",
   "version": "1.0.0",
@@ -15,7 +15,12 @@
       "title": "Open File",
       "execution": "host",
       "is_configurable": true,
-      "host_command": "file.open"
+      "host_command": "open.path",
+      "configuration_field": {
+        "kind": "file",
+        "title": "File",
+        "placeholder": "File path"
+      }
     }
   ]
 }

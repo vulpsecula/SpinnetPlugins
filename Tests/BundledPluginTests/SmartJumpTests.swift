@@ -214,7 +214,7 @@ final class SmartJumpTests: XCTestCase {
         func manifest(scope: String) -> Data {
             Data("""
             {
-              "protocol_version": "1.0", "id": "com.example.jump", "name": "Jump", "version": "1.0.0",
+              "protocol_version": "1.0", "engines": {"spinnet": "^1.0.0"}, "id": "com.example.jump", "name": "Jump", "version": "1.0.0",
               "capabilities": ["open_url"],
               "capability_scopes": [\(scope)],
               "commands": [{"id": "jump", "title": "Jump", "execution": "javascript", "is_configurable": false, "script": "jump.js"}]
@@ -326,8 +326,8 @@ final class SmartJumpScriptTests: XCTestCase {
         let run = start(.string(selection), settings: settings)
         XCTAssertEqual(try run.result.get(), .null, "Opening shows no view", file: file, line: line)
         XCTAssertEqual(run.requests, [
-            PluginTestRequest(service: .readSelectedText, input: .object(["best_effort": .bool(true)])),
-            PluginTestRequest(service: service, input: .string(target))
+            PluginTestRequest(service: .readSelectedText, input: .object(["best_effort": .bool(true)]), operation: "selection.readText"),
+            PluginTestRequest(service: service, input: .string(target), operation: HostServiceCatalogue.ids(replacing: service).first)
         ], file: file, line: line)
     }
 

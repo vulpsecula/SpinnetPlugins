@@ -1,6 +1,6 @@
 {
   "protocol_version": "1.0",
-  "api_level": 1,
+  "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.shottr",
   "name": "Shottr",
   "version": "1.0.0",
@@ -59,7 +59,7 @@
     "description": "Asks Shottr to capture an area; Shottr owns the capture and Screen Recording permission.",
     "execution": "host",
     "is_configurable": false,
-    "host_command": "deep_link.open",
+    "host_command": "apps.openDeepLink",
     "deep_link_template": "area"
   }, {
     "id": "shottr.capture_fullscreen",
@@ -67,7 +67,7 @@
     "description": "Asks Shottr to capture the full screen; Shottr owns the capture and Screen Recording permission.",
     "execution": "host",
     "is_configurable": false,
-    "host_command": "deep_link.open",
+    "host_command": "apps.openDeepLink",
     "deep_link_template": "fullscreen"
   }, {
     "id": "shottr.capture_window",
@@ -75,7 +75,7 @@
     "description": "Asks Shottr to capture a window; Shottr owns the capture and Screen Recording permission.",
     "execution": "host",
     "is_configurable": false,
-    "host_command": "deep_link.open",
+    "host_command": "apps.openDeepLink",
     "deep_link_template": "window"
   }, {
     "id": "shottr.capture_repeat_area",
@@ -83,7 +83,7 @@
     "description": "Asks Shottr to capture the previous area again.",
     "execution": "host",
     "is_configurable": false,
-    "host_command": "deep_link.open",
+    "host_command": "apps.openDeepLink",
     "deep_link_template": "repeat"
   }, {
     "id": "shottr.capture_scrolling",
@@ -91,7 +91,7 @@
     "description": "Asks Shottr to capture content while scrolling down.",
     "execution": "host",
     "is_configurable": false,
-    "host_command": "deep_link.open",
+    "host_command": "apps.openDeepLink",
     "deep_link_template": "scrolling"
   }, {
     "id": "shottr.capture_scrolling_reverse",
@@ -99,7 +99,7 @@
     "description": "Asks Shottr to capture content while scrolling up.",
     "execution": "host",
     "is_configurable": false,
-    "host_command": "deep_link.open",
+    "host_command": "apps.openDeepLink",
     "deep_link_template": "scrolling-reverse"
   }, {
     "id": "shottr.capture_delayed",
@@ -107,7 +107,7 @@
     "description": "Asks Shottr to capture after a fixed, supported delay.",
     "execution": "host",
     "is_configurable": true,
-    "host_command": "deep_link.open",
+    "host_command": "apps.openDeepLink",
     "deep_link_template": "delayed",
     "configuration_fields": [
       {"key": "delay_seconds", "kind": "choice", "title": "Delay", "choices": ["3", "5", "10"], "choice_titles": ["3 seconds", "5 seconds", "10 seconds"]}
@@ -118,7 +118,7 @@
     "description": "Asks Shottr to add another capture to the current screenshot.",
     "execution": "host",
     "is_configurable": false,
-    "host_command": "deep_link.open",
+    "host_command": "apps.openDeepLink",
     "deep_link_template": "append"
   }]
 }

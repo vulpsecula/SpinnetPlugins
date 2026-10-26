@@ -1,6 +1,6 @@
 {
   "protocol_version": "1.0",
-  "api_level": 3,
+  "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.system-monitor",
   "name": "System Monitor",
   "version": "1.3.0",

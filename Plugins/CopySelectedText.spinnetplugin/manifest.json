@@ -1,6 +1,6 @@
 {
   "protocol_version": "1.0",
-  "api_level": 1,
+  "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.builtin.copy-selected-text",
   "name": "Copy Selected Text",
   "version": "1.0.0",
@@ -19,7 +19,7 @@
       "title": "Copy Selected Text",
       "execution": "host",
       "is_configurable": false,
-      "host_command": "clipboard.copy"
+      "host_command": "selection.copy"
     }
   ]
 }
