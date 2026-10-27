@@ -286,9 +286,10 @@ final class SmartJumpTests: XCTestCase {
         open: @escaping (URL) throws -> Void
     ) -> CapabilityCheckedHostServiceBroker {
         CapabilityCheckedHostServiceBroker(
-            grantStore: grants, systemPermissionCheck: { _ in accessibility() },
-            selectedTextProvider: { _ in "" }, clipboardWriter: { _ in },
-            urlOpener: open
+            grantStore: grants,
+            systemPermissionCheck: { _ in accessibility() },
+            clipboard: .init(selectedTextProvider: { _ in "" }, clipboardWriter: { _ in }),
+            workspace: .init(urlOpener: open)
         )
     }
 

@@ -115,9 +115,8 @@ final class BobScriptTests: XCTestCase {
         let broker = CapabilityCheckedHostServiceBroker(
             grantStore: grants,
             systemPermissionCheck: { _ in true },
-            selectedTextProvider: { _ in selectedTextReads += 1; return "Selected text" },
-            clipboardWriter: { _ in },
-            appleEventSender: { sent.append($0) }
+            clipboard: .init(selectedTextProvider: { _ in selectedTextReads += 1; return "Selected text" }, clipboardWriter: { _ in }),
+            externalApps: .init(appleEventSender: { sent.append($0) })
         )
         let supervisor = try PluginTestHelper()
         defer { supervisor.shutdown() }
@@ -167,17 +166,16 @@ final class BobScriptTests: XCTestCase {
         let broker = CapabilityCheckedHostServiceBroker(
             grantStore: grants,
             systemPermissionCheck: { _ in true },
-            selectedTextProvider: { allowingCopyFallback in
+            clipboard: .init(selectedTextProvider: { allowingCopyFallback in
                 copyFallbackAllowed.append(allowingCopyFallback)
                 return try selection()
-            },
-            clipboardWriter: { _ in },
-            appleEventSender: { request in
+            }, clipboardWriter: { _ in }),
+            externalApps: .init(appleEventSender: { request in
                 let argument = try JSONDecoder().decode(JSONValue.self, from: Data(request.argument.utf8))
                 guard case .object(let fields) = argument, case .object(let body)? = fields["body"],
                       case .string(let action)? = body["action"] else { return XCTFail("Unexpected Bob request") }
                 actions.append(action)
-            }
+            })
         )
         let supervisor = try PluginTestHelper()
         defer { supervisor.shutdown() }
@@ -209,10 +207,10 @@ final class BobScriptTests: XCTestCase {
         BobPluginFixture.grant([.controlExternalApp, .readSelectedText], to: package, in: grants)
         var sent: [AppleEventRequest] = []
         let broker = CapabilityCheckedHostServiceBroker(
-            grantStore: grants, systemPermissionCheck: { _ in true },
-            selectedTextProvider: { _ in String(repeating: "a", count: ExternalAppBudgets.maximumRequestTextBytes + 1) },
-            clipboardWriter: { _ in },
-            appleEventSender: { sent.append($0) }
+            grantStore: grants,
+            systemPermissionCheck: { _ in true },
+            clipboard: .init(selectedTextProvider: { _ in String(repeating: "a", count: ExternalAppBudgets.maximumRequestTextBytes + 1) }, clipboardWriter: { _ in }),
+            externalApps: .init(appleEventSender: { sent.append($0) })
         )
         let plugin = try PluginUnderTest(named: "Bob.spinnetplugin", origin: .bundled)
         let helper = try PluginTestHelper()
@@ -235,9 +233,8 @@ final class BobScriptTests: XCTestCase {
         let broker = CapabilityCheckedHostServiceBroker(
             grantStore: grants,
             systemPermissionCheck: { _ in true },
-            selectedTextProvider: { _ in "" },
-            clipboardWriter: { _ in },
-            appleEventSender: { _ in throw nextError }
+            clipboard: .init(selectedTextProvider: { _ in "" }, clipboardWriter: { _ in }),
+            externalApps: .init(appleEventSender: { _ in throw nextError })
         )
         let supervisor = try PluginTestHelper()
         defer { supervisor.shutdown() }

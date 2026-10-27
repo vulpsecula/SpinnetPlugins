@@ -205,9 +205,10 @@ final class WindowPositionScriptTests: XCTestCase {
         func outcome(read: @escaping () throws -> FocusedWindow,
                      set: @escaping (WindowRect) throws -> Void) throws -> ActionTerminalOutcome {
             let broker = CapabilityCheckedHostServiceBroker(
-                grantStore: grants, systemPermissionCheck: { _ in true },
-                selectedTextProvider: { _ in "" }, clipboardWriter: { _ in },
-                focusedWindowProvider: read, focusedWindowFrameSetter: set
+                grantStore: grants,
+                systemPermissionCheck: { _ in true },
+                clipboard: .init(selectedTextProvider: { _ in "" }, clipboardWriter: { _ in }),
+                windows: .init(focusedWindowProvider: read, focusedWindowFrameSetter: set)
             )
             return HostActionRunner(
                 executor: NoopHostCommandExecutor(),
@@ -254,15 +255,14 @@ final class WindowPositionScriptTests: XCTestCase {
         var frames: [WindowRect] = []
         func outcome(toggle: @escaping () throws -> Void) throws -> ActionTerminalOutcome {
             let broker = CapabilityCheckedHostServiceBroker(
-                grantStore: grants, systemPermissionCheck: { _ in true },
-                selectedTextProvider: { _ in "" }, clipboardWriter: { _ in },
-                focusedWindowProvider: {
+                grantStore: grants,
+                systemPermissionCheck: { _ in true },
+                clipboard: .init(selectedTextProvider: { _ in "" }, clipboardWriter: { _ in }),
+                windows: .init(focusedWindowProvider: {
                     reads += 1
                     return FocusedWindow(frame: WindowRect(x: 0, y: 0, width: 10, height: 10),
                                          visibleFrame: WindowRect(x: 0, y: 25, width: 1440, height: 875))
-                },
-                focusedWindowFrameSetter: { frames.append($0) },
-                focusedWindowFullScreenToggler: toggle
+                }, focusedWindowFrameSetter: { frames.append($0) }, focusedWindowFullScreenToggler: toggle)
             )
             return HostActionRunner(
                 executor: NoopHostCommandExecutor(),
@@ -357,11 +357,10 @@ final class WindowPositionScriptTests: XCTestCase {
         var frames: [WindowRect] = []
         func outcome(restore: @escaping () throws -> Void) throws -> ActionTerminalOutcome {
             let broker = CapabilityCheckedHostServiceBroker(
-                grantStore: grants, systemPermissionCheck: { _ in true },
-                selectedTextProvider: { _ in "" }, clipboardWriter: { _ in },
-                focusedWindowProvider: { reads += 1; throw PluginHostServiceError.unavailable("No focused window") },
-                focusedWindowFrameSetter: { frames.append($0) },
-                focusedWindowFrameRestorer: restore
+                grantStore: grants,
+                systemPermissionCheck: { _ in true },
+                clipboard: .init(selectedTextProvider: { _ in "" }, clipboardWriter: { _ in }),
+                windows: .init(focusedWindowProvider: { reads += 1; throw PluginHostServiceError.unavailable("No focused window") }, focusedWindowFrameSetter: { frames.append($0) }, focusedWindowFrameRestorer: restore)
             )
             return HostActionRunner(
                 executor: NoopHostCommandExecutor(),

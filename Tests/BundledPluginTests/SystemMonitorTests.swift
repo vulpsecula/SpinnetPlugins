@@ -81,7 +81,11 @@ extension SystemMonitorTests {
         let grants = PluginCapabilityGrantStore()
         grants.setDecision(.granted, for: plugin.manifest.id, pluginVersion: plugin.manifest.version, capability: .readSystemStatus, scope: plugin.manifest.scope(for: .readSystemStatus))
         let registry = PluginRegistry(grantStore: grants); try registry.register(plugin.package)
-        let broker = CapabilityCheckedHostServiceBroker(grantStore: grants, systemPermissionCheck: { _ in XCTFail("No System Permission applies"); return false }, selectedTextProvider: { _ in "" }, clipboardWriter: { _ in })
+        let broker = CapabilityCheckedHostServiceBroker(
+            grantStore: grants,
+            systemPermissionCheck: { _ in XCTFail("No System Permission applies"); return false },
+            clipboard: .init(selectedTextProvider: { _ in "" }, clipboardWriter: { _ in })
+        )
         let adapter = broker.systemMetricsSourceAdapter(using: registry)
         var background: [() -> Void] = [], finishes: [() -> Void] = [], timers: [() -> Void] = []
         let engine = HostRunSources(adapters: ["system.metrics": adapter], schedule: { _, task in timers.append(task) }, background: { background.append($0) }, executor: { finishes.append($0) })

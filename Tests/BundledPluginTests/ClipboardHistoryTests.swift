@@ -25,13 +25,12 @@ final class ClipboardHistoryTests: XCTestCase {
             let grants = PluginCapabilityGrantStore()
             var presented: [(plugin: PluginID, action: ActionID)] = []
             let broker = CapabilityCheckedHostServiceBroker(
-                grantStore: grants, systemPermissionCheck: { _ in false },
-                selectedTextProvider: { _ in "" }, clipboardWriter: { _ in },
-                clipboardHistoryProvider: { _, _ in
+                grantStore: grants,
+                systemPermissionCheck: { _ in false },
+                clipboard: .init(selectedTextProvider: { _ in "" }, clipboardWriter: { _ in }, clipboardHistoryProvider: { _, _ in
                     XCTFail("Presenting reads nothing on the Plugin's behalf")
                     throw PluginHostServiceError.unavailable("not read")
-                },
-                clipboardHistoryPresenter: { package, action in presented.append((package.manifest.id, action.id)) }
+                }, clipboardHistoryPresenter: { package, action in presented.append((package.manifest.id, action.id)) })
             )
 
             let refused = helper.run(PluginTestInvocation("history.browse"), of: plugin, answering: broker)

@@ -36,9 +36,8 @@ private enum ShottrPluginFixture {
                 XCTFail("Shottr deep links must not request \(permission.rawValue)")
                 return false
             },
-            selectedTextProvider: { _ in XCTFail("Shottr must not read selected text"); return "" },
-            clipboardWriter: { _ in XCTFail("Shottr must not use Spinnet's clipboard access") },
-            deepLinkOpener: open
+            clipboard: .init(selectedTextProvider: { _ in XCTFail("Shottr must not read selected text"); return "" }, clipboardWriter: { _ in XCTFail("Shottr must not use Spinnet's clipboard access") }),
+            externalApps: .init(deepLinkOpener: open)
         )
         let runner = HostActionRunner(executor: NoHostCommands(), scriptedExecutor: nil, hostServiceBroker: broker)
         return (runner, registry)

@@ -285,10 +285,10 @@ final class WindowPositionTests: XCTestCase {
         toggleFullScreen: @escaping () throws -> Void = { XCTFail("Full screen was toggled") }
     ) -> CapabilityCheckedHostServiceBroker {
         CapabilityCheckedHostServiceBroker(
-            grantStore: grants, systemPermissionCheck: { _ in accessibility() },
-            selectedTextProvider: { _ in "" }, clipboardWriter: { _ in },
-            focusedWindowProvider: read, focusedWindowFrameSetter: set,
-            focusedWindowFullScreenToggler: toggleFullScreen
+            grantStore: grants,
+            systemPermissionCheck: { _ in accessibility() },
+            clipboard: .init(selectedTextProvider: { _ in "" }, clipboardWriter: { _ in }),
+            windows: .init(focusedWindowProvider: read, focusedWindowFrameSetter: set, focusedWindowFullScreenToggler: toggleFullScreen)
         )
     }
 
