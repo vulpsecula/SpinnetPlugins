@@ -3,34 +3,57 @@ name: Release Plugins
 # Publishes one GitHub Release per official Plugin version not yet released,
 # tagged <plugin-id>/v<version> with the asset <plugin-id>.spinnetplugin.zip.
 # Existing tags and releases are never changed: a released version whose
-# package changed fails the plan instead.
+# package changed fails the plan instead. A Plugin whose tag GitHub holds as a
+# draft, without a release or without its asset is reported as blocked and
+# fails the run, after every other Plugin is published.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      only:
+        description: Plugin id to publish alone (empty publishes every unreleased version)
+        required: false
+        default: ""
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-plugins
   cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  test:
+    # The Plugin tests and ReleaseAssetTests, which has the Host's own updater
+    # offer and apply every built asset, gate publishing.
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test Plugins and release assets
+        run: swift test
+
+  release:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.repository == 'vulpsecula/SpinnetPlugins'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Test release tooling
         run: python3 -B -m unittest discover -s Tests/Tooling -p test_release_plugins.py -v
 
-      - name: Plan
+      - name: Plan and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 -I script/release_plugins.py plan --repo "$GITHUB_REPOSITORY"
-
-      - name: Publish
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 -I script/release_plugins.py publish --repo "$GITHUB_REPOSITORY"
+          ONLY: ${{ inputs.only }}
+        run: |
+          only=()
+          if [ -n "$ONLY" ]; then only=(--only "$ONLY"); fi
+          python3 -I script/release_plugins.py publish --repo "$GITHUB_REPOSITORY" "${only[@]}"
