@@ -524,10 +524,9 @@ final class SmartJumpScriptTests: XCTestCase {
         XCTAssertEqual(copied.inputs(to: .writeClipboard), [.string("42")])
     }
 
-    /// Smart Jump installed from a file behaves as the copy the app ships:
-    /// where a Plugin came from grants it nothing.
-    func testAnInstalledSmartJumpPresentsTheSameView() throws {
-        let installed = try SmartJumpDriver(origin: .installed)
+    /// Smart Jump presents its view with or without a selection.
+    func testSmartJumpPresentsItsViewWithAndWithoutASelection() throws {
+        let installed = try SmartJumpDriver()
         defer { installed.shutdown() }
         for selection in ["", "1+1"] {
             let shown = try installed.view(of: installed.run(answering: SmartJumpDriver.services(selection: .string(selection))))

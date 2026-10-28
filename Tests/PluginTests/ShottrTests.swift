@@ -7,7 +7,7 @@ private enum ShottrPluginFixture {
     static let bundleID = "cc.ffitch.shottr"
 
     static func load() throws -> PluginPackage {
-        try PluginUnderTest(named: "Shottr.spinnetplugin", origin: .bundled).package
+        try PluginUnderTest(named: "Shottr.spinnetplugin").package
     }
 
     static func granted(_ package: PluginPackage) -> PluginCapabilityGrantStore {

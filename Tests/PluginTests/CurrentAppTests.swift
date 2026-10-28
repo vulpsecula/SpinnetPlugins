@@ -9,7 +9,7 @@ final class CurrentAppTests: XCTestCase {
     var services: RecordedHostServices!
 
     override func setUpWithError() throws {
-        plugin = try PluginUnderTest(named: "CurrentApp.spinnetplugin", origin: .bundled)
+        plugin = try PluginUnderTest(named: "CurrentApp.spinnetplugin")
         helper = try PluginTestHelper()
         apps = RecordedApps(front: .textEdit, running: [.safari])
         services = RecordedHostServices(apps: apps)

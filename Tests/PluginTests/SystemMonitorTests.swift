@@ -146,7 +146,6 @@ extension SystemMonitorTests {
         XCTAssertEqual(review.requestedAccess, [.readSystemStatus])
         try installer.install(from: source.package.rootURL)
         let package = try XCTUnwrap(registry.package(for: source.manifest.id))
-        XCTAssertEqual(package.origin, .installed)
         for filename in ["manifest.json", "monitor.js"] {
             XCTAssertEqual(try Data(contentsOf: source.package.rootURL.appendingPathComponent(filename)),
                 try Data(contentsOf: package.rootURL.appendingPathComponent(filename)))

@@ -77,7 +77,7 @@ extension SpotifyPluginTests {
         }
     }
 
-    func testNormalInstallationKeepsOriginInstalledAndLeavesEveryGrantUndetermined() throws {
+    func testNormalInstallationLeavesEveryGrantUndetermined() throws {
         let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: sandbox) }
         let grants = PluginCapabilityGrantStore()
@@ -85,7 +85,6 @@ extension SpotifyPluginTests {
         let store = PluginInstallationStore(directory: sandbox, registry: registry, grants: grants, persistGrants: {})
         let manifest = try store.install(from: directory)
         let installed = try XCTUnwrap(registry.package(for: manifest.id))
-        XCTAssertEqual(installed.origin, .installed)
         for capability in manifest.capabilities {
             XCTAssertEqual(grants.decision(for: manifest.id, pluginVersion: manifest.version, capability: capability,
                 scope: manifest.scope(for: capability)), .notDetermined)
@@ -256,7 +255,7 @@ extension SpotifyPluginTests {
         let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures/Spotify/spotify-1.0-manifest.json")
         let manifest = try historicalManifestForDataComparison(fixture)
-        return PluginPackage(rootURL: directory, manifest: manifest, origin: .installed)
+        return PluginPackage(rootURL: directory, manifest: manifest)
     }
 
 

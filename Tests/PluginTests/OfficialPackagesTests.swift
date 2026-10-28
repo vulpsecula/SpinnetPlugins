@@ -9,7 +9,7 @@ final class OfficialPackagesTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Plugins")
         let packages = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "spinnetplugin" }
-            .map { try PluginUnderTest(packageAt: $0, origin: .bundled) }
+            .map { try PluginUnderTest(packageAt: $0) }
         XCTAssertEqual(Set(packages.map { $0.manifest.id.rawValue }), [
             "com.spinnet.bob", "com.spinnet.clipboard-history", "com.spinnet.builtin.copy-selected-text",
             "com.spinnet.builtin.cut", "com.spinnet.builtin.open-application", "com.spinnet.builtin.open-file",

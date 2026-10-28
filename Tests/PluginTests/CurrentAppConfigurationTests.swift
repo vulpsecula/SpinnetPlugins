@@ -4,7 +4,7 @@ import SpinnetPluginTestKit
 
 final class CurrentAppConfigurationTests: XCTestCase {
     func plugin() throws -> PluginUnderTest {
-        try PluginUnderTest(named: "CurrentApp.spinnetplugin", origin: .bundled)
+        try PluginUnderTest(named: "CurrentApp.spinnetplugin")
     }
 
     func testCloseIsTheConfiguredPrimaryAndQuitAnAlternateButCallingEitherOnlyReviews() throws {

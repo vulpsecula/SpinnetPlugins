@@ -3,11 +3,10 @@ import XCTest
 import SpinnetCore
 import SpinnetPluginTestKit
 
-/// The repository's Smart Jump package, registered the way the Host registers
-/// a Plugin that ships with the app.
+/// The repository's Smart Jump package.
 enum SmartJumpFixture {
     static func load() throws -> PluginPackage {
-        try PluginUnderTest(named: "SmartJump.spinnetplugin", origin: .bundled).package
+        try PluginUnderTest(named: "SmartJump.spinnetplugin").package
     }
 
     /// Grants the package's Capabilities with their current scopes.
@@ -41,9 +40,9 @@ final class SmartJumpDriver {
     let helper: PluginTestHelper
     let plugin: PluginUnderTest
 
-    init(origin: PluginOrigin = .bundled) throws {
+    init() throws {
         helper = try PluginTestHelper()
-        plugin = try PluginUnderTest(named: "SmartJump.spinnetplugin", origin: origin)
+        plugin = try PluginUnderTest(named: "SmartJump.spinnetplugin")
     }
 
     func shutdown() { helper.shutdown() }

@@ -6,7 +6,7 @@ import SpinnetPluginTestKit
 /// registers a Plugin that ships with the app.
 enum TranslatorFixture {
     static func load() throws -> PluginPackage {
-        try PluginUnderTest(named: "Translator.spinnetplugin", origin: .bundled).package
+        try PluginUnderTest(named: "Translator.spinnetplugin").package
     }
 
     static func grantAll(_ package: PluginPackage, in grants: PluginCapabilityGrantStore) {
@@ -147,7 +147,7 @@ final class TranslatorScriptTests: XCTestCase {
 
     override func setUpWithError() throws {
         helper = try PluginTestHelper()
-        plugin = try PluginUnderTest(named: "Translator.spinnetplugin", origin: .bundled)
+        plugin = try PluginUnderTest(named: "Translator.spinnetplugin")
     }
 
     override func tearDown() {

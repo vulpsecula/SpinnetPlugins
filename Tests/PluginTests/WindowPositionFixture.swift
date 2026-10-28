@@ -11,7 +11,7 @@ enum WindowPositionFixture {
     }
 
     static func plugin() throws -> PluginUnderTest {
-        try PluginUnderTest(named: "WindowPosition.spinnetplugin", origin: .bundled)
+        try PluginUnderTest(named: "WindowPosition.spinnetplugin")
     }
 
     /// Grants the package's focused-window Capability with its current scope.

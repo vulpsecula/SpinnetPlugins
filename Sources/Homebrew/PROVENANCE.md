@@ -14,7 +14,7 @@ The current package requires Spinnet `^1.0.0` and uses package browsers with
 contextual actions, Host-owned Tasks and native output. The maintained source is
 `src/catalog.js` and `src/homebrew.js`; `scripts/build.py` generates the nine
 entry scripts listed in `scripts/entries.json`. Current public-helper coverage
-is in `Tests/BundledPluginTests/HomebrewBrowserTests.swift` at the repository
+is in `Tests/PluginTests/HomebrewBrowserTests.swift` at the repository
 root. The initial import's byte equality and test count are historical facts,
 not descriptions of these maintained files.
 

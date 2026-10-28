@@ -8,7 +8,7 @@ private enum BobPluginFixture {
     static let operationFamily = "translate"
 
     static func load() throws -> PluginPackage {
-        try PluginUnderTest(named: "Bob.spinnetplugin", origin: .bundled).package
+        try PluginUnderTest(named: "Bob.spinnetplugin").package
     }
 
     static func grant(
@@ -212,7 +212,7 @@ final class BobScriptTests: XCTestCase {
             clipboard: .init(selectedTextProvider: { _ in String(repeating: "a", count: ExternalAppBudgets.maximumRequestTextBytes + 1) }, clipboardWriter: { _ in }),
             externalApps: .init(appleEventSender: { sent.append($0) })
         )
-        let plugin = try PluginUnderTest(named: "Bob.spinnetplugin", origin: .bundled)
+        let plugin = try PluginUnderTest(named: "Bob.spinnetplugin")
         let helper = try PluginTestHelper()
         defer { helper.shutdown() }
 

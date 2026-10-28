@@ -17,7 +17,7 @@ final class HomebrewTests: XCTestCase {
         helper?.shutdown()
         if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.removeItem(at: directory) }
     }
-    private func plugin() throws -> PluginUnderTest { try PluginUnderTest(named: "Homebrew.spinnetplugin", origin: .bundled) }
+    private func plugin() throws -> PluginUnderTest { try PluginUnderTest(named: "Homebrew.spinnetplugin") }
     private func render(_ command: String = "brew.installed", input: JSONValue = .null, event: PluginViewEvent? = nil,
                      state: JSONValue = .null, activities: [JSONValue] = []) throws -> PluginScriptAnswer {
         let services = RecordedHostServices(operations: ["activities.list": .value(.array(activities))], storage: storage)

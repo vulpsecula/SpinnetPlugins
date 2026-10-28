@@ -37,7 +37,7 @@ final class CurrentAppFootprintTests: XCTestCase {
         let baseline = try footprint()
         baselineHelper.shutdown()
 
-        let plugin = try PluginUnderTest(named: "CurrentApp.spinnetplugin", origin: .bundled)
+        let plugin = try PluginUnderTest(named: "CurrentApp.spinnetplugin")
         let helper = try PluginTestHelper()
         defer { helper.shutdown() }
         let apps = RecordedApps()

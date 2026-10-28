@@ -5,10 +5,10 @@ let package = Package(
     name: "SpinnetPlugins",
     platforms: [.macOS(.v13)],
     dependencies: [
-        .package(url: "https://github.com/vulpsecula/Spinnet.git", revision: "031ad42c4439fe07fcd7473d4f91671095d8c701")
+        .package(url: "https://github.com/vulpsecula/Spinnet.git", revision: "f54190de59ef12ea5a07c39126d21cc3f57f70a9")
     ],
     targets: [
-        .testTarget(name: "BundledPluginTests", dependencies: [
+        .testTarget(name: "PluginTests", dependencies: [
             .product(name: "SpinnetPluginTestKit", package: "Spinnet"),
             .product(name: "SpinnetCore", package: "Spinnet"),
             .product(name: "SpinnetPluginHelper", package: "Spinnet")
