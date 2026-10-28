@@ -4,6 +4,7 @@
   "id": "com.spinnet.builtin.open-file",
   "name": "Open File",
   "version": "1.0.0",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "preset": {
     "readiness": "setup_required",
     "is_configurable": true,

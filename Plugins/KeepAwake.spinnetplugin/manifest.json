@@ -4,6 +4,7 @@
   "id": "com.spinnet.coffee",
   "name": "Keep Awake",
   "version": "1.0.3",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "capabilities": [
     "keep_awake",
     "read_frontmost_app"

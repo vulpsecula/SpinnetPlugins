@@ -4,6 +4,7 @@
   "id": "com.spinnet.builtin.run-shortcut",
   "name": "Run Shortcut",
   "version": "1.0.0",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "preset": {
     "readiness": "setup_required",
     "is_configurable": true,

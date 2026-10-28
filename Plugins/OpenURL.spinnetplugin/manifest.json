@@ -4,6 +4,7 @@
   "id": "com.spinnet.builtin.open-url",
   "name": "Open URL",
   "version": "1.0.1",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "preset": {
     "readiness": "setup_required",
     "is_configurable": true,

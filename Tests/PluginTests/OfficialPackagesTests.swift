@@ -24,6 +24,7 @@ final class OfficialPackagesTests: XCTestCase {
         for plugin in packages {
             XCTAssertEqual(plugin.manifest.hostCompatibility.rawValue, "^1.0.0", plugin.manifest.id.rawValue)
             XCTAssertTrue(plugin.manifest.hostCompatibility.contains(.current))
+            XCTAssertEqual(plugin.manifest.updateSource?.github, "vulpsecula/SpinnetPlugins", plugin.manifest.id.rawValue)
         }
     }
 

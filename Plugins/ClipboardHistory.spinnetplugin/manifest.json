@@ -4,6 +4,7 @@
   "id": "com.spinnet.clipboard-history",
   "name": "Clipboard History",
   "version": "1.1.0",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "capabilities": ["read_clipboard_history"],
   "capability_scopes": [{
     "capability": "read_clipboard_history",

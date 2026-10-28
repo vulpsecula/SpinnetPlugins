@@ -4,6 +4,7 @@
   "id": "com.spinnet.shottr",
   "name": "Shottr",
   "version": "1.0.0",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "capabilities": ["control_external_app"],
   "capability_scopes": [{
     "capability": "control_external_app",

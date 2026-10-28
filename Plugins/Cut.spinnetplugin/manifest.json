@@ -4,6 +4,7 @@
   "id": "com.spinnet.builtin.cut",
   "name": "Cut",
   "version": "1.0.0",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "preset": {
     "readiness": "ready_to_use",
     "is_configurable": false,

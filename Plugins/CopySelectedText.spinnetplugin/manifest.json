@@ -4,6 +4,7 @@
   "id": "com.spinnet.builtin.copy-selected-text",
   "name": "Copy Selected Text",
   "version": "1.0.0",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "capabilities": [
     "read_selected_text",
     "write_clipboard"

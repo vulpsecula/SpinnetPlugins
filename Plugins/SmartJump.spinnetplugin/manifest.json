@@ -4,6 +4,7 @@
   "id": "com.spinnet.smart-jump",
   "name": "Smart Jump",
   "version": "2.0.0",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "capabilities": ["read_selected_text", "read_current_clipboard", "open_url", "write_clipboard", "open_local_path"],
   "optional_capabilities": ["read_current_clipboard", "write_clipboard", "open_local_path"],
   "capability_scopes": [{

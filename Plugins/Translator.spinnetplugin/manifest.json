@@ -4,6 +4,7 @@
   "id": "com.spinnet.translator",
   "name": "Translator",
   "version": "2.1.0",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "capabilities": ["read_selected_text", "read_current_clipboard", "contact_https"],
   "optional_capabilities": ["read_current_clipboard"],
   "capability_scopes": [{

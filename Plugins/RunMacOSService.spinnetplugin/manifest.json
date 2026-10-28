@@ -4,6 +4,7 @@
   "id": "com.spinnet.builtin.service",
   "name": "Run macOS Service",
   "version": "1.0.0",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "preset": {
     "readiness": "setup_required",
     "is_configurable": true,

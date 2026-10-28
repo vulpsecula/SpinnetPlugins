@@ -4,6 +4,7 @@
   "id": "com.spinnet.external.spotify",
   "name": "Spotify",
   "version": "1.2.0",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "capabilities": [
     "control_external_app"
   ],

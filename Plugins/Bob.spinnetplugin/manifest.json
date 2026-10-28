@@ -4,6 +4,7 @@
   "id": "com.spinnet.bob",
   "name": "Bob",
   "version": "1.1.0",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "capabilities": ["control_external_app", "read_selected_text", "read_current_clipboard"],
   "optional_capabilities": ["read_current_clipboard"],
   "capability_scopes": [{

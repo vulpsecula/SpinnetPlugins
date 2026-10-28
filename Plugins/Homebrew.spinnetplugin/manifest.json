@@ -4,6 +4,7 @@
   "id": "com.spinnet.homebrew",
   "name": "Homebrew",
   "version": "2.5.6",
+  "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "capabilities": [
     "read_reviewed_tools",
     "run_reviewed_tool_tasks"
