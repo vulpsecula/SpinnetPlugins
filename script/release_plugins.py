@@ -4,11 +4,16 @@ Each package under Plugins/ is released as tag `<id>/v<version>` with the
 asset `<id>.spinnetplugin.zip`, the names Spinnet's Update Source contract
 defines. A version already released is compared with its published asset:
 identical contents are skipped, and changed contents without a version bump
-are refused. Existing tags and releases are never changed.
+are refused, as is a new version not higher than the highest released one.
+A tag GitHub holds as a draft, without a release or without its asset blocks
+only its Plugin: the others are still published, then the command fails.
+Existing tags and releases are never changed.
 
     build   --out DIR      build every asset without asking GitHub
-    plan    [--out DIR]    list released and unreleased versions (a dry run)
+    plan    [--out DIR]    list released, unreleased and blocked versions (a dry run)
     publish [--dry-run]    create a release at HEAD for every unreleased version
+
+Each command takes `--only PLUGIN_ID`, repeatable, to handle just those Plugins.
 
 GitHub is reached through the `gh` CLI, authenticated by GH_TOKEN in CI.
 """
@@ -47,6 +52,23 @@ REPOSITORY = "vulpsecula/SpinnetPlugins"
 
 class ReleaseError(Exception):
     """A package that cannot be released as it is."""
+
+
+class BlockedRelease(ReleaseError):
+    """A version whose tag GitHub already holds in a state only a person can resolve.
+
+    It blocks only its own Plugin: the others are still planned and published.
+    """
+
+
+def semver_key(version):
+    """A sort key giving SemVer 2.0.0 precedence for an M.m.p[-prerelease] version."""
+    core, _, prerelease = version.partition("-")
+    numbers = tuple(int(part) for part in core.split("."))
+    if not prerelease:
+        return numbers, (1,)
+    identifiers = tuple((0, int(part), "") if part.isdigit() else (1, 0, part) for part in prerelease.split("."))
+    return numbers, (0, identifiers)
 
 
 def release_tag(plugin_id, version):
@@ -109,6 +131,7 @@ class PlannedRelease:
     package: Path
     archive: bytes
     released: bool
+    blocked: str = None
 
     @property
     def tag(self):
@@ -148,14 +171,14 @@ def _check_archive(package, entries, archive):
 
 
 def package_contents(archive):
-    """Each file in a package archive by its path inside the package folder."""
+    """Each file in a package archive by its path, package folder included."""
     contents = {}
     with zipfile.ZipFile(io.BytesIO(archive)) as opened:
         for info in opened.infolist():
             parts = info.filename.rstrip("/").split("/")
             if info.is_dir() or parts[0] == "__MACOSX" or any(_is_junk(part) for part in parts):
                 continue
-            contents["/".join(parts[1:])] = opened.read(info)
+            contents["/".join(parts)] = opened.read(info)
     return contents
 
 
@@ -163,13 +186,17 @@ def _differences(published, current):
     return sorted(path for path in published.keys() | current.keys() if published.get(path) != current.get(path))
 
 
-def plan(plugins, releases, repository):
-    """Every package under `plugins`, built and compared with its published release, if any.
+def plan(plugins, releases, repository, only=None):
+    """Every package under `plugins`, or those whose id is in `only`, built and
+    compared with its published release, if any.
 
-    A released version whose package changed is refused: a published version never changes.
+    Every manifest is checked, even outside `only`. A released version whose
+    package changed is refused: a published version never changes. So is an
+    unreleased version not higher than the highest released one, which the
+    Host would never offer. A blocked tag marks only its own PlannedRelease.
     """
     packages = sorted(Path(plugins).glob("*.spinnetplugin"))
-    built = []
+    manifests = []
     owners = {}
     for package in packages:
         manifest = json.loads((package / "manifest.json").read_text())
@@ -177,6 +204,15 @@ def plan(plugins, releases, repository):
         if manifest["id"] in owners:
             raise ReleaseError(f"{package.name} and {owners[manifest['id']]} share the id {manifest['id']}")
         owners[manifest["id"]] = package.name
+        manifests.append((manifest, package))
+    if only:
+        unknown = sorted(set(only) - owners.keys())
+        if unknown:
+            raise ReleaseError(f"No package under {plugins} has the id {', '.join(unknown)}")
+        manifests = [(manifest, package) for manifest, package in manifests if manifest["id"] in only]
+
+    built = []
+    for manifest, package in manifests:
         entries = package_entries(package)
         archive = build_archive(package)
         _check_archive(package, entries, archive)
@@ -185,8 +221,21 @@ def plan(plugins, releases, repository):
     planned = []
     for manifest, package, archive in built:
         tag, name = release_tag(manifest["id"], manifest["version"]), asset_name(manifest["id"])
-        published = releases.released_asset(tag, name)
-        if published is not None:
+        try:
+            published = releases.released_asset(tag, name)
+        except BlockedRelease as blocked:
+            planned.append(PlannedRelease(manifest["id"], manifest.get("name", manifest["id"]), manifest["version"],
+                                          package, archive, False, str(blocked)))
+            continue
+        if published is None:
+            released = [version for version in releases.released_versions(manifest["id"])
+                        if UPDATE_VERSION.match(version)]
+            highest = max(released, key=semver_key, default=None)
+            if highest is not None and semver_key(manifest["version"]) <= semver_key(highest):
+                raise ReleaseError(
+                    f"{package.name} has version {manifest['version']}, but {manifest['id']} {highest} is already "
+                    f"released. The Host offers only a higher version; bump it above {highest}.")
+        else:
             changed = _differences(package_contents(published), package_contents(archive))
             if changed:
                 raise ReleaseError(
@@ -218,7 +267,7 @@ def write_assets(planned, out):
 
 def publish(planned, publisher, target, out):
     """Creates a release at `target` for every planned version not yet released."""
-    pending = [item for item in planned if not item.released]
+    pending = [item for item in planned if not item.released and not item.blocked]
     paths = write_assets(pending, out)
     for item in pending:
         publisher.create(item.tag, paths[item.tag], f"{item.name} {item.version}", release_notes(item), target)
@@ -238,35 +287,46 @@ def _gh(*arguments, binary=False):
 class GitHubReleases:
     """The repository's tags and releases, read once."""
 
-    def __init__(self, repository):
+    def __init__(self, repository, gh=None):
         self.repository = repository
-        refs = _gh("api", "--paginate", f"repos/{repository}/git/matching-refs/tags/", "--jq", ".[].ref")
+        self._gh = gh or _gh
+        refs = self._gh("api", "--paginate", f"repos/{repository}/git/matching-refs/tags/", "--jq", ".[].ref")
         self.tags = {line.removeprefix("refs/tags/") for line in refs.splitlines() if line}
-        lines = _gh("api", "--paginate", f"repos/{repository}/releases", "--jq", ".[] | @json")
+        lines = self._gh("api", "--paginate", f"repos/{repository}/releases", "--jq", ".[] | @json")
         self.releases = {release["tag_name"]: release for release in map(json.loads, filter(None, lines.splitlines()))}
+
+    def released_versions(self, plugin_id):
+        """Versions of this Plugin with a published (non-draft) release, prereleases included."""
+        prefix = f"{plugin_id}/v"
+        return [tag.removeprefix(prefix) for tag, release in self.releases.items()
+                if tag.startswith(prefix) and not release.get("draft")]
 
     def released_asset(self, tag, name):
         release = self.releases.get(tag)
         if release is None:
             if tag in self.tags:
-                raise ReleaseError(f"Tag {tag} exists without a release; publish it by hand or bump the version")
+                raise BlockedRelease(f"Tag {tag} exists without a release")
             return None
         if release.get("draft"):
-            raise ReleaseError(f"The release {tag} is a draft; publish or remove it by hand")
+            raise BlockedRelease(f"The release {tag} is a draft")
         asset = next((asset for asset in release.get("assets", []) if asset["name"] == name), None)
         if asset is None:
-            raise ReleaseError(f"The release {tag} has no asset named {name}")
-        return _gh("api", "-H", "Accept: application/octet-stream",
+            raise BlockedRelease(f"The release {tag} has no asset named {name}")
+        return self._gh("api", "-H", "Accept: application/octet-stream",
                    f"repos/{self.repository}/releases/assets/{asset['id']}", binary=True)
 
 
 class GitHubPublisher:
-    def __init__(self, repository):
+    def __init__(self, repository, gh=None):
         self.repository = repository
+        self._gh = gh or _gh
 
     def create(self, tag, asset, title, notes, target):
-        _gh("release", "create", tag, str(asset), "--repo", self.repository, "--target", target,
-            "--title", title, "--notes", notes)
+        # GitHub's "latest" badge would pick one Plugin among many, so none gets it.
+        # The Host skips a release marked as a prerelease, as SemVer prerelease versions should be.
+        prerelease = ["--prerelease"] if "-" in tag.rsplit("/v", 1)[1] else []
+        self._gh("release", "create", tag, str(asset), "--repo", self.repository, "--target", target,
+                 "--title", title, "--notes", notes, "--latest=false", *prerelease)
         print(f"Released {tag}")
 
 
@@ -276,26 +336,49 @@ class NoReleases:
     def released_asset(self, tag, name):
         return None
 
+    def released_versions(self, plugin_id):
+        return []
+
 
 # MARK: - Command line
 
 def _report(planned):
     for item in planned:
-        print(f"{'released  ' if item.released else 'unreleased'}  {item.tag}  {item.asset}")
-    unreleased = sum(not item.released for item in planned)
-    print(f"{unreleased} unreleased, {len(planned) - unreleased} already released")
+        state = "blocked   " if item.blocked else "released  " if item.released else "unreleased"
+        print(f"{state}  {item.tag}  {item.asset}")
+    blocked = sum(bool(item.blocked) for item in planned)
+    unreleased = sum(not item.released for item in planned) - blocked
+    print(f"{unreleased} unreleased, {len(planned) - unreleased - blocked} already released, {blocked} blocked")
 
 
-def _clean_target(plugins):
-    status = subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--", str(plugins)],
-                            capture_output=True, text=True, check=True).stdout
-    if status:
-        raise ReleaseError(f"Plugins have uncommitted changes; a release is built from a commit:\n{status}")
-    return subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
-                          capture_output=True, text=True, check=True).stdout.strip()
+def _blocked_status(planned):
+    """1 when a Plugin is blocked, after saying why and how to recover; 0 otherwise."""
+    blocked = [item for item in planned if item.blocked]
+    for item in blocked:
+        print(f"error: {item.plugin_id} is blocked: {item.blocked}. Check that it is not public, then delete the "
+              f"draft release or the tag {item.tag} by hand, or bump the version; see README Releasing.",
+              file=sys.stderr)
+    return 1 if blocked else 0
 
 
-def main(arguments=None):
+def clean_target(plugins):
+    """HEAD, when every file in `plugins` is committed: an asset is built from the
+    working tree, so a changed, untracked or git-ignored file would be released
+    without being in the commit. Finder junk, never packaged, is allowed."""
+    def git(*arguments):
+        return subprocess.run(["git", "-C", str(plugins), *arguments],
+                              capture_output=True, text=True, check=True).stdout
+    lines = git("status", "--porcelain", "--ignored", "--untracked-files=all", "--", ".").splitlines()
+    dirty = [line for line in lines
+             if not (line.startswith("!! ") and any(_is_junk(part) for part in line[3:].rstrip("/").split("/")))]
+    if dirty:
+        raise ReleaseError("Plugins have uncommitted or git-ignored files; a release is built from a commit:\n"
+                           + "\n".join(dirty))
+    return git("rev-parse", "HEAD").strip()
+
+
+def main(arguments=None, gh=None, target=None):
+    """`gh` and `target` stand in for the gh CLI and the clean-commit check in tests."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("build", "plan", "publish"):
@@ -303,26 +386,28 @@ def main(arguments=None):
         command.add_argument("--plugins", type=Path, default=ROOT / "Plugins")
         command.add_argument("--repo", default=REPOSITORY)
         command.add_argument("--out", type=Path, required=name == "build", help="where to write the assets")
+        command.add_argument("--only", action="append", metavar="PLUGIN_ID",
+                             help="only this Plugin; may be repeated")
         if name == "publish":
             command.add_argument("--dry-run", action="store_true", help="only plan")
     options = parser.parse_args(arguments)
     try:
         if options.command == "build":
-            planned = plan(options.plugins, NoReleases(), options.repo)
+            planned = plan(options.plugins, NoReleases(), options.repo, options.only)
             write_assets(planned, options.out)
             print(f"Built {len(planned)} assets in {options.out}")
             return 0
-        planned = plan(options.plugins, GitHubReleases(options.repo), options.repo)
+        planned = plan(options.plugins, GitHubReleases(options.repo, gh=gh), options.repo, options.only)
         _report(planned)
         if options.command == "plan" or options.dry_run:
             if options.out:
                 write_assets(planned, options.out)
-            return 0
-        target = _clean_target(options.plugins)
+            return _blocked_status(planned)
+        commit = (target or clean_target)(options.plugins)
         with tempfile.TemporaryDirectory() as temporary:
-            published = publish(planned, GitHubPublisher(options.repo), target, options.out or Path(temporary))
-        print(f"Published {len(published)} releases at {target}")
-        return 0
+            published = publish(planned, GitHubPublisher(options.repo, gh=gh), commit, options.out or Path(temporary))
+        print(f"Published {len(published)} releases at {commit}")
+        return _blocked_status(planned)
     except ReleaseError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

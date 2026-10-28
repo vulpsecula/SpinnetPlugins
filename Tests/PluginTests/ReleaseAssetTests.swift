@@ -5,7 +5,7 @@ import SpinnetCore
 /// Each asset `script/release_plugins.py` builds is offered and applied as a
 /// Plugin Update by the Host's own updater, reading the archive with the
 /// Host's real reader. GitHub's answers are recorded; nothing reaches the
-/// network.
+/// network unless the opt-in live check is enabled.
 final class ReleaseAssetTests: XCTestCase {
     private static let repository = "vulpsecula/SpinnetPlugins"
     private var directory: URL!
@@ -101,6 +101,41 @@ final class ReleaseAssetTests: XCTestCase {
         }
     }
 
+    /// Opt-in: `SPINNET_LIVE_RELEASE=<plugin-id>` checks the published GitHub
+    /// Release of that Plugin over the network with the Host's own updater.
+    /// The repository's package is installed as version 0.0.0-0, so the
+    /// released version must be offered without refusals, and applying it
+    /// must install exactly the repository's package.
+    func testOptInLiveReleaseIsOfferedAndAppliedFromGitHub() throws {
+        guard let id = ProcessInfo.processInfo.environment["SPINNET_LIVE_RELEASE"], !id.isEmpty else {
+            throw XCTSkip("Set SPINNET_LIVE_RELEASE=<plugin-id> to check that Plugin's published release on github.com")
+        }
+        let packages = try FileManager.default.contentsOfDirectory(
+            at: root.appendingPathComponent("Plugins"), includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "spinnetplugin" }
+        let found = try packages.map { ($0, try PluginManifestLoader.load(packageAt: $0).manifest) }
+        let (package, manifest) = try XCTUnwrap(found.first { $0.1.id.rawValue == id }, "No package under Plugins/ has the id \(id)")
+
+        let grants = PluginCapabilityGrantStore()
+        let registry = PluginRegistry(grantStore: grants)
+        let store = PluginInstallationStore(directory: directory.appendingPathComponent("Installed"), registry: registry,
+                                            grants: grants, persistGrants: {})
+        try store.install(from: earlierCopy(of: package))
+        let updater = PluginUpdater(store: store, registry: registry, transport: LiveHTTPSTransport(),
+                                    downloads: directory.appendingPathComponent("Downloads"))
+
+        let check = try updater.check(manifest.id)
+        XCTAssertEqual(check.refusals, [])
+        let offer = try XCTUnwrap(check.update, "GitHub offers no release of \(id)")
+        XCTAssertEqual(offer.tag, PluginUpdateSource.releaseTag(for: manifest.id, version: manifest.version))
+        XCTAssertEqual(offer.manifest, manifest)
+
+        try updater.apply(offer)
+        let installed = try XCTUnwrap(registry.package(for: manifest.id))
+        XCTAssertEqual(installed.manifest.version, manifest.version)
+        XCTAssertEqual(try files(in: installed.rootURL), try files(in: package), "the installed package is the repository's package")
+    }
+
     /// Every file's contents by its path inside `package`.
     private func files(in package: URL) throws -> [String: Data] {
         let base = package.resolvingSymlinksInPath().path + "/"
@@ -123,5 +158,56 @@ private final class PublishedReleases: HTTPSTransport {
             return HTTPSTransportResponse(status: 404, headers: [:], body: Data())
         }
         return HTTPSTransportResponse(status: 200, headers: [:], body: body)
+    }
+}
+
+/// A minimal real-network transport honouring `HTTPSTransport`: one request
+/// per call on an ephemeral session without cookies, cache or stored
+/// credentials, returning a redirect to the Host instead of following it.
+/// The Host's own URLSession transport is internal to its app target.
+private final class LiveHTTPSTransport: NSObject, HTTPSTransport, URLSessionTaskDelegate {
+    func send(_ request: HTTPSTransportRequest) throws -> HTTPSTransportResponse {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        configuration.urlCredentialStorage = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        configuration.httpAdditionalHeaders = ["User-Agent": "Spinnet"]
+        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+
+        var urlRequest = URLRequest(url: request.url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                                    timeoutInterval: request.timeout)
+        urlRequest.httpMethod = request.method
+        urlRequest.httpBody = request.body
+        for (name, value) in request.headers { urlRequest.setValue(value, forHTTPHeaderField: name) }
+
+        let done = DispatchSemaphore(value: 0)
+        var answer: (Data?, URLResponse?, Error?)
+        let task = session.dataTask(with: urlRequest) { data, response, error in
+            answer = (data, response, error)
+            done.signal()
+        }
+        task.resume()
+        guard done.wait(timeout: .now() + request.timeout) == .success else {
+            task.cancel()
+            throw HTTPSTransportError.timedOut
+        }
+        if let error = answer.2 as? URLError, error.code == .timedOut { throw HTTPSTransportError.timedOut }
+        guard answer.2 == nil, let response = answer.1 as? HTTPURLResponse else { throw HTTPSTransportError.connectionFailed }
+        let body = answer.0 ?? Data()
+        guard body.count <= request.maximumResponseBytes else { throw HTTPSTransportError.responseTooLarge }
+        var headers: [String: String] = [:]
+        for (name, value) in response.allHeaderFields {
+            if let name = name as? String, let value = value as? String { headers[name] = value }
+        }
+        return HTTPSTransportResponse(status: response.statusCode, headers: headers, body: body)
+    }
+
+    // The Host decides where a redirect may go.
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }

@@ -95,33 +95,67 @@ contract looks up:
 | Asset | `<id>.spinnetplugin.zip`, holding exactly the package folder |
 
 To release a Plugin, bump `version` in its `manifest.json` (SemVer `M.m.p` with an
-optional `-prerelease`, never `+build` metadata), commit and push to `main`. The
-[Release Plugins](.github/workflows/release.yml) workflow then publishes every
-version that has no release yet, tagging the pushed commit; it can also be run by
-hand from the Actions tab. A published version never changes: when a package's
-contents differ from its released asset and its version was not bumped, the
-workflow fails and publishes nothing. Tags and releases are never rewritten or
-deleted; to withdraw a version, publish a higher one.
+optional `-prerelease`, never `+build` metadata) above its highest released
+version, commit and push to `main`, then run the
+[Release Plugins](.github/workflows/release.yml) workflow from the Actions tab,
+optionally with a Plugin id to publish that Plugin alone. It runs `swift test` on
+macOS and, when it passes, publishes every version that has no release yet,
+tagging the commit it ran on. A version with a `-prerelease`
+part is published as a GitHub prerelease, which the Host does not offer, and no
+release is marked as the repository's latest.
+
+A published version never changes: when a package's contents (its folder name
+included) differ from its released asset and its version was not bumped, or its
+version is not higher by SemVer than the highest released version of that id,
+the workflow fails and publishes nothing. Tags and releases are never rewritten
+or deleted by the tooling; to withdraw a version, publish a higher one.
+
+A Plugin is blocked when its tag already exists without a release, its release is
+a draft, or the release lacks its asset, as an interrupted run can leave behind.
+The others are still planned and published, and the run then fails naming the
+blocked Plugin. To recover, open the tag's release on GitHub and check that it
+was never published (a draft, or no release at all, has not reached anyone).
+Then delete the orphan draft release, or the tag
+(`gh release delete <id>/v<version> --cleanup-tag` or
+`git push origin :refs/tags/<id>/v<version>`), and run the workflow again. If the
+version was ever public, bump the version instead.
+
+Recommended repository settings, not configured by this repository: a tag
+ruleset (tag protection) for `*/v*` that blocks updates and deletions, and
+GitHub's immutable releases, so a published tag and asset cannot change.
+Deleting an orphan tag then needs a ruleset bypass.
 
 `script/release_plugins.py` (Python standard library, plus the `gh` CLI for
 GitHub) builds each asset deterministically: sorted entries, fixed timestamps
 and permissions, deflated, with every file in the package folder, licences and
 notices included, and Finder junk such as `.DS_Store` left out. Before
 publishing, it refuses a manifest whose id, version or `update_source` breaks the
-Host's rules and an asset over the Host's size or entry bounds. Dry runs:
+Host's rules, an asset over the Host's size or entry bounds, and a `Plugins/`
+folder with uncommitted, untracked or git-ignored files, so an asset holds
+exactly the committed files. `--only <plugin-id>` (repeatable) limits `build`,
+`plan` and `publish` to those Plugins. Dry runs:
 
 ```sh
 # Build every asset without asking GitHub.
 uv run --no-project python script/release_plugins.py build --out tmp/dist
-# List released and unreleased versions and compare released ones with GitHub
-# (needs `gh auth login`); --out also keeps the built assets.
+# List released, unreleased and blocked versions and compare released ones with
+# GitHub (needs `gh auth login`); --out also keeps the built assets.
 uv run --no-project python script/release_plugins.py plan --out tmp/dist
+uv run --no-project python script/release_plugins.py publish --only com.spinnet.bob --dry-run
 ```
 
 `publish` creates the missing releases from a clean checkout at `HEAD`; the
 workflow runs it, so it is rarely run by hand. `swift test` includes
 `ReleaseAssetTests`, which builds every asset with the script and has the Host's
 own updater unpack, offer and apply each one against recorded GitHub answers.
+After a release, check it on github.com with the Host's updater over the real
+network: it installs the repository's package as version `0.0.0-0`, expects the
+released version to be offered without refusals, applies it and compares the
+installed files with the package.
+
+```sh
+SPINNET_LIVE_RELEASE=com.spinnet.bob swift test --filter ReleaseAssetTests.testOptInLiveReleaseIsOfferedAndAppliedFromGitHub
+```
 
 Homebrew package changes request Host-owned Tasks; the Plugin supplies neither
 shell commands nor passwords. The current Host runs native Homebrew as the user,
