@@ -96,11 +96,11 @@ contract looks up:
 
 To release a Plugin, bump `version` in its `manifest.json` (SemVer `M.m.p` with an
 optional `-prerelease`, never `+build` metadata) above its highest released
-version, commit and push to `main`, then run the
-[Release Plugins](.github/workflows/release.yml) workflow from the Actions tab,
-optionally with a Plugin id to publish that Plugin alone. It runs `swift test` on
-macOS and, when it passes, publishes every version that has no release yet,
-tagging the commit it ran on. A version with a `-prerelease`
+version, commit and push to `main`. The
+[Release Plugins](.github/workflows/release.yml) workflow then runs `swift test`
+on macOS and, when it passes, publishes every version that has no release yet,
+tagging the pushed commit. It can also be run by hand from the Actions tab,
+optionally with a Plugin id to publish that Plugin alone. A version with a `-prerelease`
 part is published as a GitHub prerelease, which the Host does not offer, and no
 release is marked as the repository's latest.
 

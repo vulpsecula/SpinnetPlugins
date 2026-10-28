@@ -7,6 +7,8 @@ name: Release Plugins
 # draft, without a release or without its asset is reported as blocked and
 # fails the run, after every other Plugin is published.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       only:
