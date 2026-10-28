@@ -1,9 +1,10 @@
 # Spinnet Plugins
 
-The official Plugin packages consumed by Spinnet packaging, distributed under
-MIT. Each package under `Plugins/` is independently installable; Bundled
-distribution grants no extra authority. Emoji remains a proof workload and is
-not shipped here.
+The Official Plugin packages, distributed under MIT. Spinnet ships no Plugins:
+each package under `Plugins/` is installed like any other Plugin and is published
+here as its own GitHub Release, which every manifest declares as its Update
+Source. Being official grants no extra authority. Emoji remains a proof workload
+and is not shipped here.
 
 Tests depend one way on Spinnet's public `SpinnetPluginTestKit` and real
 `SpinnetPluginHelper`, pinned by full Host commit in `Package.swift`. They import
@@ -67,22 +68,60 @@ are refused; package versions and test dependency pins remain independent.
 
 To try a Host change together with a Plugin change, edit this package's SwiftPM
 dependency locally (or use `swift package edit Spinnet --path /path/to/Spinnet`),
-and point Host packaging at this checkout's packages:
+and install this checkout's packages into a Host built from that change:
 
 ```sh
-SPINNET_BUNDLED_PLUGINS_DIR=/path/to/SpinnetPlugins/Plugins /path/to/Spinnet/script/build_and_run.sh --verify
+/path/to/Spinnet/script/build_and_run.sh --install-plugins /path/to/SpinnetPlugins/Plugins --verify
 ```
 
-For a normal release, commit and push Plugin changes, then update the Host's
-`bundled-plugins.lock.json` repository URL and full commit SHA. Packaging fetches
-that revision; it does not follow a branch or a tag. Neither repository contains
-a git submodule or a git dependency on the other in the reverse direction.
+Neither repository contains a git submodule or a git dependency on the other in
+the reverse direction.
 
-For a new Bundled Plugin, add its normally installable package under `Plugins/`,
-declare Host compatibility, preserve IDs and exact upstream notices, and add public
-kit tests here. Host lock updates and shipped regression coverage belong in the
-Host repository. Bundled identity grants no extra authority; additions need an
-implemented public contract before onboarding. Emoji remains an external proof workload.
+For a new Official Plugin, add its normally installable package under `Plugins/`,
+declare Host compatibility and this repository as its Update Source, preserve IDs
+and exact upstream notices, and add public kit tests here. Being official grants
+no extra authority; additions need an implemented public contract before
+onboarding. Emoji remains an external proof workload.
+
+## Releasing
+
+Each Plugin version is published as its own GitHub Release, under the names the
+Host's [Update Source](https://github.com/vulpsecula/Spinnet/blob/main/PluginAPI/reference/update-source.md)
+contract looks up:
+
+| Part | Value |
+| --- | --- |
+| Tag | `<id>/v<version>`, such as `com.spinnet.bob/v1.1.0` |
+| Asset | `<id>.spinnetplugin.zip`, holding exactly the package folder |
+
+To release a Plugin, bump `version` in its `manifest.json` (SemVer `M.m.p` with an
+optional `-prerelease`, never `+build` metadata), commit and push to `main`. The
+[Release Plugins](.github/workflows/release.yml) workflow then publishes every
+version that has no release yet, tagging the pushed commit; it can also be run by
+hand from the Actions tab. A published version never changes: when a package's
+contents differ from its released asset and its version was not bumped, the
+workflow fails and publishes nothing. Tags and releases are never rewritten or
+deleted; to withdraw a version, publish a higher one.
+
+`script/release_plugins.py` (Python standard library, plus the `gh` CLI for
+GitHub) builds each asset deterministically: sorted entries, fixed timestamps
+and permissions, deflated, with every file in the package folder, licences and
+notices included, and Finder junk such as `.DS_Store` left out. Before
+publishing, it refuses a manifest whose id, version or `update_source` breaks the
+Host's rules and an asset over the Host's size or entry bounds. Dry runs:
+
+```sh
+# Build every asset without asking GitHub.
+uv run --no-project python script/release_plugins.py build --out tmp/dist
+# List released and unreleased versions and compare released ones with GitHub
+# (needs `gh auth login`); --out also keeps the built assets.
+uv run --no-project python script/release_plugins.py plan --out tmp/dist
+```
+
+`publish` creates the missing releases from a clean checkout at `HEAD`; the
+workflow runs it, so it is rarely run by hand. `swift test` includes
+`ReleaseAssetTests`, which builds every asset with the script and has the Host's
+own updater unpack, offer and apply each one against recorded GitHub answers.
 
 Homebrew package changes request Host-owned Tasks; the Plugin supplies neither
 shell commands nor passwords. The current Host runs native Homebrew as the user,

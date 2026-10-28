@@ -5,6 +5,8 @@ Git fast-export/import selected `Plugins/` and `Tests/BundledPluginTests/`;
 commits retain authors, dates, messages and parent relationships among relevant
 commits. Hashes change because unrelated Host files and commits are excluded.
 The original history remains available in the Host repository.
+`Tests/BundledPluginTests/` was later renamed `Tests/PluginTests/` once the Host
+stopped shipping Plugins; Official Plugins are now published as releases here.
 
 Current App 2.0.0 was imported for Spinnet #94 from the independently accepted
 `SpinnetProbes/current-app` revision `480903f055eafa128c9f8114f7e7de2587debd2f`.
