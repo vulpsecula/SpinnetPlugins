@@ -3,7 +3,7 @@
   "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.builtin.paste",
   "name": "Paste",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "preset": {
     "readiness": "ready_to_use",
