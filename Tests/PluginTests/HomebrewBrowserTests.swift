@@ -76,7 +76,7 @@ final class HomebrewTests: XCTestCase {
 
     func testNineEntrypointsRefreshCatalogBeforeRelatedReads() throws {
         let manifest = try plugin().manifest
-        XCTAssertEqual(manifest.version, "2.5.6"); XCTAssertEqual(manifest.hostCompatibility.rawValue, "^1.0.0")
+        XCTAssertEqual(manifest.version, "2.5.7"); XCTAssertEqual(manifest.hostCompatibility.rawValue, "^1.0.0")
         XCTAssertEqual(manifest.commands.count, 9)
         XCTAssertNil(manifest.scope(for: .controlExternalApp))
         for command in manifest.commands {
@@ -526,6 +526,57 @@ final class HomebrewTests: XCTestCase {
         XCTAssertEqual(finished.page?.id,"homebrew-outdated")
         XCTAssertEqual(try source(finished).input.value(atPointer:"/operation"),.string("outdated"))
         XCTAssertNil(finished.operation)
+    }
+
+    func testCatalogActivityDeliveredBeforeAdmissionIsAppliedWhenAdmissionArrives() throws {
+        for status in ["running", "ended"] {
+            let opened = try render("brew.outdated")
+            let task: JSONValue = .object(["id": .string("activity_1123456789abcdef0123456789abcdef"),
+                "kind": .string("task"), "tool": .string("homebrew"), "operation": .string("refreshCatalog"),
+                "status": .string(status), "output": .string("Catalog output"),
+                "result": status == "ended" ? .object(["outcome": .string("completed")]) : .null])
+            let early = try render(event: .sourceDelivered(page: "homebrew-task", source: "brew-activities",
+                sequence: 1, result: .array([task]), failure: nil), state: opened.state)
+            let admitted = try render(event: .operationFinished(id: "brew-task", perform: "tools.startTask",
+                outcome: .succeeded), state: early.state)
+
+            if status == "running" {
+                XCTAssertEqual(try text(admitted, "task-output"), "Catalog output")
+                XCTAssertEqual(try press(admitted, "stop").operation?.perform, "activities.stop")
+            } else {
+                XCTAssertEqual(admitted.page?.id, "homebrew-outdated")
+                XCTAssertEqual(try source(admitted).input.value(atPointer: "/operation"), .string("outdated"))
+            }
+        }
+    }
+
+    func testMissingRunningTaskAndRejectedStopReleaseTheCatalogPage() throws {
+        for missingFromSource in [true, false] {
+            let opened = try render("brew.outdated")
+            let admitted = try render(event: .operationFinished(id: "brew-task", perform: "tools.startTask",
+                outcome: .succeeded), state: opened.state)
+            let task: JSONValue = .object(["id": .string("activity_1123456789abcdef0123456789abcdef"),
+                "kind": .string("task"), "tool": .string("homebrew"), "status": .string("running"),
+                "output": .string("==> Updating Homebrew...")])
+            let running = try render(event: .sourceDelivered(page: "homebrew-task", source: "brew-activities",
+                sequence: 1, result: .array([task]), failure: nil), state: admitted.state)
+            let resolved: PluginScriptAnswer
+            if missingFromSource {
+                resolved = try render(event: .sourceDelivered(page: "homebrew-task", source: "brew-activities",
+                    sequence: 2, result: .array([]), failure: nil), state: running.state)
+            } else {
+                let stopping = try press(running, "stop")
+                XCTAssertEqual(try text(stopping, "task-status"), "Stopping…")
+                resolved = try render(event: .operationFinished(id: "stop", perform: "activities.stop",
+                    outcome: .refused(.taskNotFound)), state: stopping.state)
+            }
+            XCTAssertFalse(try text(resolved, "task-status").contains("Running"))
+            XCTAssertTrue(try text(resolved, "task-status").contains("unknown"))
+            XCTAssertTrue(resolved.page?.sources.isEmpty == true)
+            XCTAssertNil(resolved.operation, "A lost result must never replay the update")
+            let local = try press(resolved, "local-catalog")
+            XCTAssertEqual(try source(local).input.value(atPointer: "/operation"), .string("outdated"))
+        }
     }
     func testCatalogFailureRequiresExplicitRetryOrDisclosedLocalRead() throws {
         for outcome in ["failed","stopped","unknown"] {

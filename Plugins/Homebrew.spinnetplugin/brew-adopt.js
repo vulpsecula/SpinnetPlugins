@@ -74,7 +74,7 @@ const brewCatalog = (() => {
   const mode = model.sections.includes(entryMode) ? entryMode : "list";
   const s = Object.assign({screen:mode,section:mode,query:"",kind:"both",serial:0,instance:Date.now().toString(36) + Math.random().toString(36).slice(2),
     caches:{},read:null,queue:[],error:"",notice:"",detail:null,preview:null,origin:null,
-    taskID:null,waiting:false,admitted:false,running:false,seen:[],output:"",truncated:false,
+    taskID:null,waiting:false,admitted:false,running:false,stopping:false,pendingTask:null,seen:[],output:"",truncated:false,
     taskTitle:"",taskResult:null,returnTo:null,catalogRefresh:false,report:"doctor",tap:"",adoptionFilter:"available",rawReturn:null},state || {});
   // Existing pinned views and task return routes use the surviving selection page.
   for (const field of ["screen","section"]) if (s[field] === "upgrade") s[field] = "outdated";
@@ -154,6 +154,26 @@ const brewCatalog = (() => {
     if (s.output.charCodeAt(0) >= 0xdc00 && s.output.charCodeAt(0) <= 0xdfff) s.output = s.output.slice(1);
     s.truncated = !!truncated || raw.length > 12000;
   }
+  function taskUnavailable() {
+    s.waiting = false; s.running = false; s.stopping = false; s.pendingTask = null;
+    s.taskResult = {outcome:"unknown",reason:"Final result unavailable; the task is no longer listed."};
+  }
+  function applyTask(task,withOutput = true) {
+    const endedNow = busy() && task.status === "ended";
+    s.pendingTask = null; s.taskID = task.id; s.waiting = false; s.running = task.status !== "ended";
+    s.stopping = s.running && (s.stopping || task.status === "stopping");
+    if (withOutput) showOutput(typeof task.output === "string" ? task.output : (task.log || []).join("\n"),task.output_truncated);
+    if (!s.running) {
+      s.taskResult = task.result || {outcome:"unknown"};
+      if (endedNow && s.catalogRefresh && s.taskResult.outcome === "completed") finishCatalogRefresh(false);
+      else if (endedNow && !s.catalogRefresh) refresh(s.returnTo && s.returnTo.section || s.section);
+    }
+  }
+  function selectedTask(activities) {
+    const id = s.taskID || s.pendingTask && s.pendingTask.id;
+    return id ? activities.find(item => item.id === id) : s.waiting ?
+      activities.find(item => item.kind === "task" && item.tool === "homebrew" && !s.seen.includes(item.id)) : null;
+  }
   function currentPackages() {
     const slot = s.section === "list" ? "inventory" : s.section === "search" ? "search" : "upgrades";
     const data = cached(slot), inventory = cached("inventory");
@@ -181,7 +201,7 @@ const brewCatalog = (() => {
     s.catalogRefresh = task.operation === "refreshCatalog";
     s.returnTo = s.origin || {section:s.section,query:s.query,kind:s.kind};
     s.read = null; s.queue = []; s.screen = "task";
-    s.taskTitle = title; s.taskResult = null; s.taskID = null; s.waiting = true; s.admitted = false; s.running = false;
+    s.taskTitle = title; s.taskResult = null; s.taskID = null; s.waiting = true; s.admitted = false; s.running = false; s.stopping = false; s.pendingTask = null;
     s.seen = (spinnet.activities.list() || []).map(item => item.id);
     showOutput("",false);
     operation = spinnet.tools.startTask.operation(Object.assign({tool:"homebrew"},task),{id:"brew-task",notify:true});
@@ -296,22 +316,33 @@ const brewCatalog = (() => {
   }
   if (e.type === "operation_finished" && e.operation === "brew-task" && s.waiting) {
     s.admitted = e.outcome === "succeeded"; s.waiting = s.admitted;
-    if (!s.admitted) s.taskResult = {outcome:e.outcome,reason:e.reason || "Task did not start"};
+    if (!s.admitted) { s.pendingTask = null; s.taskResult = {outcome:e.outcome,reason:e.reason || "Task did not start"}; }
+    else if (s.pendingTask) applyTask(s.pendingTask,false);
+  }
+  if (e.type === "operation_finished" && e.operation === "stop" && e.outcome !== "succeeded") {
+    if (["task_not_found","task_finished"].includes(e.reason)) taskUnavailable();
+    else { s.stopping = false; s.error = "Stop was not accepted: " + (e.reason || e.outcome); }
   }
   if (e.type === "source_delivered" && e.source === "brew-activities" && (busy() || s.taskID)) {
     if (e.failure) s.error = e.failure.message || "Task status is temporarily unavailable.";
     else {
       const activities = Array.isArray(e.result) ? e.result : [];
-      const task = s.taskID ? activities.find(item => item.id === s.taskID) : s.waiting && s.admitted ? activities.find(item => item.kind === "task" && item.tool === "homebrew" && !s.seen.includes(item.id)) : null;
+      let task = selectedTask(activities);
+      if (!task && (s.running || s.waiting && s.admitted)) {
+        // Recheck an empty sampled snapshot before declaring the tracked task
+        // unavailable; the sample may predate admission or a newer update.
+        try {
+          task = selectedTask(spinnet.activities.list() || []);
+          if (!task) taskUnavailable();
+        } catch (error) { s.error = error.message || "Task status is temporarily unavailable."; }
+      }
       if (task) {
-        const endedNow = (s.running || s.waiting) && task.status === "ended";
-        s.taskID = task.id; s.waiting = false; s.running = task.status !== "ended";
-        showOutput(typeof task.output === "string" ? task.output : (task.log || []).join("\n"),task.output_truncated);
-        if (!s.running) {
-          s.taskResult = task.result || {outcome:"unknown"};
-          if (endedNow && s.catalogRefresh && s.taskResult.outcome === "completed") finishCatalogRefresh(false);
-          else if (endedNow && !s.catalogRefresh) refresh(s.returnTo && s.returnTo.section || s.section);
-        }
+        if (s.waiting && !s.admitted) {
+          // Preserve an early activity until the start outcome establishes
+          // admission, without duplicating its bounded output in view state.
+          showOutput(typeof task.output === "string" ? task.output : (task.log || []).join("\n"),task.output_truncated);
+          s.pendingTask = {id:task.id,status:task.status,result:task.result || null};
+        } else applyTask(task);
       }
     }
   }
@@ -356,7 +387,10 @@ const brewCatalog = (() => {
     }
   }
   if (e.type === "action_chosen") {
-    if (e.action === "stop" && s.running && s.taskID) operation = spinnet.activities.stop.operation({id:s.taskID},{id:"stop",notify:true});
+    if (e.action === "stop" && s.running && !s.stopping && s.taskID) {
+      s.stopping = true;
+      operation = spinnet.activities.stop.operation({id:s.taskID},{id:"stop",notify:true});
+    }
     if (!busy()) {
       if (e.action === "back" && s.screen === "raw" && s.rawReturn) {
         const route = s.rawReturn; s.screen = route.screen; s.section = route.section; s.query = route.query; s.kind = route.kind; s.error = route.error;
@@ -506,11 +540,11 @@ const brewCatalog = (() => {
   } else if (s.screen === "task") {
     content.push(c.text({id:"task-title",text:model.text(s.taskTitle),style:{fontSize:17,fontWeight:"semibold"}}));
     const result = s.taskResult;
-    content.push(c.text({id:"task-status",text:model.text(s.running ? "Running…" : s.waiting ? s.admitted ? "Waiting for task output…" : s.catalogRefresh ? "Starting catalog update…" : "Waiting for Host confirmation…" : result ? [result.outcome,result.reason,typeof result.exit_status === "number" ? "exit " + result.exit_status : ""].filter(Boolean).join(" · ") : "Task status unavailable"),style:{color:"secondary"}}));
+    content.push(c.text({id:"task-status",text:model.text(s.running ? s.stopping ? "Stopping…" : "Running…" : s.waiting ? s.admitted ? "Waiting for task output…" : s.catalogRefresh ? "Starting catalog update…" : "Waiting for Host confirmation…" : result ? [result.outcome,result.reason,typeof result.exit_status === "number" ? "exit " + result.exit_status : ""].filter(Boolean).join(" · ") : "Task status unavailable"),style:{color:"secondary"}}));
     content.push(literal("task-output",s.output || (s.waiting || s.running ? "Waiting for output…" : result && result.outcome === "completed" ? "Completed with no output." : "No output was produced."),"Output"));
     if (s.truncated) content.push(c.text({id:"output-limit",text:"Showing the latest output; earlier text exceeded the display limit.",style:{color:"secondary"}}));
     if (!s.waiting && !s.running && s.catalogRefresh) content.push(buttons("task-controls",[["retry-catalog","Retry Catalog Update"],["local-catalog","Continue with Local Catalog"]]));
-    else if (!s.waiting) content.push(buttons("task-controls",s.running ? [["stop","Stop"]] : [["back","Back to " + model.titles[model.sections.indexOf(s.returnTo && s.returnTo.section || s.section)]]]));
+    else if (!s.waiting && !s.stopping) content.push(buttons("task-controls",s.running ? [["stop","Stop"]] : [["back","Back to " + model.titles[model.sections.indexOf(s.returnTo && s.returnTo.section || s.section)]]]));
   } else if (s.screen === "raw") {
     const result = cached("raw");
     if (result) {
