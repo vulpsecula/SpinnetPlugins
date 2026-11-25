@@ -12,6 +12,15 @@ const brewCatalog = (() => {
   const text = value => String(value == null ? "" : value).replace(/([\\`*_{}\[\]<>])/g,"\\$1");
   const queryValid = value => /^[a-z0-9+_.@][a-z0-9+_.@-]{1,63}$/.test(value);
   const tapValid = value => /^[a-z0-9][a-z0-9_.-]{0,63}\/[a-z0-9][a-z0-9_.-]{0,63}$/.test(value);
+  function appIcon(bundleID, symbol) {
+    if (typeof bundleID === "string" && bundleID.length <= 255 && /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(bundleID)) {
+      return {app:bundleID,symbol};
+    }
+    return {symbol};
+  }
+  function packageIcon(item) {
+    return item.kind === "cask" ? appIcon(item.bundle_id,"app") : {symbol:"terminal"};
+  }
   function packages(result, inventory) {
     const installed = new Map((inventory && inventory.packages || []).map(item => [key(item),item]));
     const complete = !!inventory && !inventory.truncated;
@@ -63,5 +72,5 @@ const brewCatalog = (() => {
     }
     return copy;
   }
-  return {sections,titles,key,id,text,queryValid,tapValid,packages,primary,actions,group,grouped,bounded};
+  return {sections,titles,key,id,text,queryValid,tapValid,appIcon,packageIcon,packages,primary,actions,group,grouped,byteLength,bounded};
 })();

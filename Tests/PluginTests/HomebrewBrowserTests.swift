@@ -4,7 +4,7 @@ import XCTest
 import SpinnetCore
 import SpinnetPluginTestKit
 
-final class HomebrewTests: XCTestCase {
+final class HomebrewBrowserTests: XCTestCase {
     private var helper: PluginTestHelper!
     private var storage: PluginStorage!
     private var directory: URL!
@@ -65,18 +65,18 @@ final class HomebrewTests: XCTestCase {
     }
     private func finishCatalogRefresh(_ answer: PluginScriptAnswer) throws -> PluginScriptAnswer {
         guard answer.operation?.input.value(atPointer: "/operation") == .string("refreshCatalog") else { return answer }
-        return try completeCatalog(answer, outcome: "completed")
+        return try completeTask(answer, outcome: "completed")
     }
-    private func completeCatalog(_ answer: PluginScriptAnswer, outcome: String) throws -> PluginScriptAnswer {
+    private func completeTask(_ answer: PluginScriptAnswer, outcome: String) throws -> PluginScriptAnswer {
         let admitted = try render(event: .operationFinished(id: "brew-task", perform: "tools.startTask", outcome: .succeeded), state: answer.state)
-        let task: JSONValue = .object(["id": .string("catalog-" + UUID().uuidString), "kind": .string("task"), "tool": .string("homebrew"),
-            "status": .string("ended"), "output": .string("Catalog fixture output"), "result": .object(["outcome": .string(outcome)])])
+        let task: JSONValue = .object(["id": .string("task-" + UUID().uuidString), "kind": .string("task"), "tool": .string("homebrew"),
+            "status": .string("ended"), "output": .string("Task fixture output"), "result": .object(["outcome": .string(outcome)])])
         return try render(event: .sourceDelivered(page: "homebrew-task", source: "brew-activities", sequence: 1, result: .array([task]), failure: nil), state: admitted.state)
     }
 
     func testNineEntrypointsRefreshCatalogBeforeRelatedReads() throws {
         let manifest = try plugin().manifest
-        XCTAssertEqual(manifest.version, "2.5.7"); XCTAssertEqual(manifest.hostCompatibility.rawValue, "^1.0.0")
+        XCTAssertEqual(manifest.version, "2.5.8"); XCTAssertEqual(manifest.hostCompatibility.rawValue, "^1.0.0")
         XCTAssertEqual(manifest.commands.count, 9)
         XCTAssertNil(manifest.scope(for: .controlExternalApp))
         for command in manifest.commands {
@@ -158,6 +158,38 @@ final class HomebrewTests: XCTestCase {
         XCTAssertEqual(back.page?.id, "homebrew-list"); XCTAssertEqual(back.state.value(atPointer: "/query"), .string("wget"))
         XCTAssertNil(back.operation); XCTAssertTrue(back.page?.sources.isEmpty == true)
     }
+    func testInstalledAndOutdatedPackageIconsUseValidBundleIDsAndKindFallbacks() throws {
+        let packages = [
+            package("firefox", "cask", ["bundle_id": .string("org.mozilla.firefox")]),
+            package("missing", "cask"),
+            package("malformed", "cask", ["bundle_id": .string("org..app")]),
+            package("too-long", "cask", ["bundle_id": .string("org." + String(repeating: "a", count: 252))]),
+            package("non-string", "cask", ["bundle_id": .number(1)]),
+            package("wget", "formula", ["bundle_id": .string("org.example.wget")])
+        ]
+        for command in ["brew.installed", "brew.outdated"] {
+            let listed = try loaded(command, packages: packages)
+            let items = try XCTUnwrap(listed.page?.collection).items
+            let icons = Dictionary(uniqueKeysWithValues: items.map { ($0.title, $0.icon) })
+            XCTAssertEqual(icons, [
+                "firefox": .app(bundleIdentifier: "org.mozilla.firefox", fallbackSymbol: "app"),
+                "missing": .symbol("app"),
+                "malformed": .symbol("app"),
+                "too-long": .symbol("app"),
+                "non-string": .symbol("app"),
+                "wget": .symbol("terminal")
+            ])
+        }
+    }
+    func testSearchUsesInstalledCaskBundleIDFromInventory() throws {
+        let inventory = try deliver(open("brew.search"), data("installed", [
+            package("firefox", "cask", ["bundle_id": .string("org.mozilla.firefox")])
+        ]))
+        let search = try field(inventory, "query-search", "fire")
+        let found = try deliver(search, data("search", [package("firefox", "cask")]))
+        XCTAssertEqual(found.page?.collection?.items.first?.icon,
+                       .app(bundleIdentifier: "org.mozilla.firefox", fallbackSymbol: "app"))
+    }
     func testSearchOnTypingMergesInstalledStateAndUninstalledPrimaryStartsConfirmedInstall() throws {
         let opened = try open("brew.search")
         let inventory = try deliver(opened, data("installed", [package("old", "formula", ["installed_version": .string("1"), "outdated": .bool(true)])]))
@@ -187,26 +219,113 @@ final class HomebrewTests: XCTestCase {
             XCTAssertNotNil(answer.page?.component("error"))
         }
     }
-    func testOutdatedPrimaryUpgradesAndPinsAreExcludedFromSelection() throws {
-        let listed = try loaded("brew.outdated", packages: [package("wget", "formula", ["installed_version": .string("1"), "version": .string("2")]), package("firefox", "cask", ["pinned": .bool(true)])])
+    func testFreshUpgradesStartUncheckedAndSelectAllIncludesEveryUnpinnedPackage() throws {
+        let listed = try loaded("brew.outdated", packages: [package("wget"), package("firefox", "cask"), package("pinned", "formula", ["pinned": .bool(true)])])
         let list = try XCTUnwrap(listed.page?.collection)
-        XCTAssertTrue(list.items.first(where: { $0.title == "wget" })?.marks.contains("included") == true)
-        XCTAssertTrue(list.items.first(where: { $0.title == "firefox" })?.marks.isEmpty == true)
-        XCTAssertFalse(list.items.first(where: { $0.title == "firefox" })?.actions?.contains("include") == true)
-        let upgrade = try row(listed, named: "wget")
-        XCTAssertEqual(upgrade.operation?.input.value(atPointer: "/operation"), .string("upgrade"))
-        let pinned = try row(listed, named: "firefox")
-        XCTAssertEqual(pinned.operation?.input.value(atPointer: "/operation"), .string("unpin"))
+        XCTAssertEqual(list.items.count, 3)
+        XCTAssertTrue(list.items.allSatisfy { $0.marks.isEmpty })
+        XCTAssertEqual(list.items.filter { $0.accessory == "Select" }.count, 2)
+        XCTAssertFalse(list.items.first(where: { $0.title == "pinned" })?.actions?.contains("include") == true)
+        guard case .actions(_, let initialButtons)? = listed.page?.component("selection-controls") else { return XCTFail("Missing selection controls") }
+        XCTAssertEqual(initialButtons.map(\.title), ["Upgrade All Formulae", "Upgrade All Cask Apps", "Select All", "Deselect All"])
+
+        let selected = try press(listed, "select-all")
+        let included = try XCTUnwrap(selected.page?.collection).items.filter { $0.marks.contains("included") }
+        XCTAssertEqual(Set(included.map(\.title)), Set(["wget", "firefox"]))
+        guard case .actions(_, let selectedButtons)? = selected.page?.component("selection-controls") else { return XCTFail("Missing selection controls") }
+        XCTAssertEqual(selectedButtons.map(\.title), ["Upgrade All Formulae", "Upgrade All Cask Apps", "Upgrade 1 Selected Formulae",
+            "Preview Selected Formulae", "Upgrade 1 Selected Cask Apps", "Preview Selected Cask Apps", "Select All", "Deselect All"])
+    }
+    func testUpgradeAllUsesEachKindsLoadedUnpinnedPackagesWithEmptySelection() throws {
+        let opened = try open("brew.outdated")
+        let listed = try deliver(opened, .object(["operation": .string("outdated"), "truncated": .bool(true), "packages": .array([
+            package("one"), package("two"), package("first-app", "cask"), package("second-app", "cask"),
+            package("pinned-formula", "formula", ["pinned": .bool(true)]), package("pinned-app", "cask", ["pinned": .bool(true)])
+        ])]))
+        XCTAssertNotNil(listed.page?.component("partial"))
+        XCTAssertTrue(try XCTUnwrap(listed.page?.collection).items.allSatisfy { $0.marks.isEmpty })
+        let filtered = try field(listed, "query-outdated", "one")
+        for (kind, names) in [("formula", ["one", "two"]), ("cask", ["first-app", "second-app"])] {
+            let run = try press(filtered, "upgrade-all-" + kind)
+            XCTAssertEqual(run.operation?.perform, "tools.startTask")
+            XCTAssertEqual(run.operation?.input, .object(["tool": .string("homebrew"), "operation": .string("upgradeSelected"),
+                "kind": .string(kind), "names": .array(names.map(JSONValue.string))]))
+        }
+        let pinnedOnly = try loaded("brew.outdated", packages: [package("pinned", "cask", ["pinned": .bool(true)])])
+        guard case .actions(_, let buttons)? = pinnedOnly.page?.component("selection-controls") else { return XCTFail("Missing selection controls") }
+        XCTAssertEqual(buttons.map(\.title), ["Select All", "Deselect All"])
+    }
+    func testUpgradeAllOverFiftyShowsErrorAndAllowsSmallerSelection() throws {
+        let packages = (1...51).map { package("formula-\($0)") }
+        let listed = try loaded("brew.outdated", packages: packages)
+        let refused = try press(listed, "upgrade-all-formula")
+        XCTAssertNil(refused.operation)
+        XCTAssertEqual(try text(refused, "error"), "Select up to 50 unpinned packages of one kind for this upgrade.")
+        let selected = try row(refused, named: "formula-1", action: "include")
+        XCTAssertEqual(try press(selected, "upgrade-formula").operation?.input.value(atPointer: "/names"), .array([.string("formula-1")]))
+    }
+    func testUpgradeSelectedUpdatesCachedRowsAndSelectionOnlyOnCompletion() throws {
+        let packages = [package("one"), package("two"), package("one", "cask", ["title": .string("One App")])]
+        for outcome in ["failed", "stopped", "unknown", "partial", "completed"] {
+            let listed = try loaded("brew.outdated", packages: packages)
+            let selected = try row(row(listed, named: "one", action: "include"), named: "One App", action: "include")
+            let finished = try completeTask(press(selected, "upgrade-formula"), outcome: outcome)
+            let returned = try press(finished, "back")
+            let rows = try XCTUnwrap(returned.page?.collection).items
+            let completed = outcome == "completed"
+            XCTAssertEqual(Set(rows.map(\.title)), Set(completed ? ["two", "One App"] : ["one", "two", "One App"]), outcome)
+            XCTAssertEqual(Set(rows.filter { $0.marks.contains("included") }.map(\.title)), Set(completed ? ["One App"] : ["one", "One App"]), outcome)
+            XCTAssertEqual(try source(returned).input.value(atPointer: "/operation"), .string("outdated"))
+            if completed {
+                let refreshed = try deliver(returned, data("outdated", packages))
+                let refreshedRows = try XCTUnwrap(refreshed.page?.collection).items
+                XCTAssertEqual(refreshedRows.count, 3)
+                XCTAssertEqual(refreshedRows.filter { $0.marks.contains("included") }.map(\.title), ["One App"])
+            }
+        }
+    }
+    func testCompletedSingleUpgradeFromDetailsUpdatesCachedUpgrades() throws {
+        let outdated = package("wget", "formula", ["installed_version": .string("1"), "outdated": .bool(true)])
+        let listed = try loaded("brew.outdated", packages: [outdated, package("other")])
+        let details = try deliver(row(listed, named: "wget", action: "details"), data("info", [outdated]))
+        let run = try press(details, "upgrade")
+        XCTAssertEqual(run.operation?.input.value(atPointer: "/operation"), .string("upgrade"))
+        let returned = try press(completeTask(run, outcome: "completed"), "back")
+        XCTAssertEqual(returned.page?.collection?.items.map(\.title), ["other"])
+        XCTAssertEqual(try source(returned).input.value(atPointer: "/operation"), .string("outdated"))
+    }
+    func testCompletedUninstallUpdatesCachedInstalledInventory() throws {
+        let listed = try loaded(packages: [package("wget"), package("other")])
+        let run = try row(listed, named: "wget", action: "uninstall")
+        XCTAssertEqual(run.operation?.input.value(atPointer: "/operation"), .string("uninstall"))
+        let returned = try press(completeTask(run, outcome: "completed"), "back")
+        XCTAssertEqual(returned.page?.collection?.items.map(\.title), ["other"])
+        XCTAssertEqual(try source(returned).input.value(atPointer: "/operation"), .string("installed"))
+    }
+    func testLegacyExcludedSelectionIsTreatedAsEmpty() throws {
+        let listed = try loaded("brew.outdated", packages: [package("one"), package("two")])
+        let selected = try row(listed, named: "one", action: "include")
+        let generation = try XCTUnwrap(selected.state.value(atPointer: "/caches/selection"))
+        try storage.setValue(.object(["generation": generation, "data": .object(["excluded": .array([.string("formula:two")])])]),
+                             forKey: "homebrew.browser.v3.selection", of: try plugin().manifest.id)
+        let legacy = try field(selected, "query-outdated", "o")
+        let list = try XCTUnwrap(legacy.page?.collection)
+        XCTAssertEqual(list.items.count, 2)
+        XCTAssertTrue(list.items.allSatisfy { $0.marks.isEmpty && $0.accessory == "Select" })
+        XCTAssertNil(legacy.page?.component("error"))
+        let included = try row(legacy, named: "two", action: "include")
+        XCTAssertEqual(included.page?.collection?.items.filter { $0.marks.contains("included") }.map(\.title), ["two"])
     }
     func testSelectiveUpgradesKeepKindsSeparateAndDoNotIncludeDeselectedOrPinnedPackages() throws {
         let listed = try loaded("brew.outdated", packages: [package("one"), package("two"), package("pinned", "formula", ["pinned": .bool(true)]), package("one", "cask")])
-        let narrowed = try row(listed, named: "two", action: "include")
+        let narrowed = try row(press(listed, "select-all"), named: "two", action: "include")
         let formulae = try press(narrowed, "upgrade-formula")
         XCTAssertEqual(formulae.operation?.input, .object(["tool": .string("homebrew"), "operation": .string("upgradeSelected"), "kind": .string("formula"), "names": .array([.string("one")])]))
         let casks = try press(narrowed, "upgrade-cask")
         XCTAssertEqual(casks.operation?.input.value(atPointer: "/kind"), .string("cask"))
         XCTAssertEqual(casks.operation?.input.value(atPointer: "/names"), .array([.string("one")]))
         let none = try press(narrowed, "select-none")
+        XCTAssertTrue(try XCTUnwrap(none.page?.collection).items.allSatisfy { $0.marks.isEmpty })
         XCTAssertNil(try press(none, "upgrade-formula").operation)
     }
     func testRetiredGlobalUpgradeCannotStartFromNavigationOrStaleActions() throws {
@@ -260,7 +379,8 @@ final class HomebrewTests: XCTestCase {
     func testTaskStreamsOnlyItsOwnLiteralOutputAndCompletionRefreshesWithoutReplay() throws {
         let listed = try loaded("brew.outdated", packages: [package("wget")])
         let old: JSONValue = .object(["id": .string("old"), "kind": .string("task"), "tool": .string("homebrew"), "status": .string("ended")])
-        let run = try row(listed, named: "wget", activities: [old])
+        let selected = try row(listed, named: "wget", action: "include")
+        let run = try row(selected, named: "wget", activities: [old])
         let admitted = try self.render(event: .operationFinished(id: "brew-task", perform: "tools.startTask", outcome: .succeeded), state: run.state)
         let raw = "==> Downloading\n[#####     ] 50%\n**literal** [url](https://example.com)"
         let task: JSONValue = .object(["id": .string("activity_0123456789abcdef0123456789abcdef"), "kind": .string("task"), "tool": .string("homebrew"), "status": .string("running"), "output": .string(raw)])
@@ -310,8 +430,10 @@ final class HomebrewTests: XCTestCase {
     }
     func testAdoptionUsesAppCandidateThenPreviewTargetAndASeparateConfirmGesture() throws {
         let opened = try open("brew.adopt")
-        let app: JSONValue = .object(["identity": .string("app-copy"), "target": .string("app_candidate"), "name": .string("Firefox"), "version": .string("1"), "candidates": .array([.object(["name": .string("firefox"), "confidence": .string("likely"), "reason": .string("Name and version match")])])])
+        let app: JSONValue = .object(["identity": .string("app-copy"), "target": .string("app_candidate"), "name": .string("Firefox"), "version": .string("1"), "bundle_id": .string("org.mozilla.firefox"), "candidates": .array([.object(["name": .string("firefox"), "confidence": .string("likely"), "reason": .string("Name and version match")])])])
         let listed = try deliver(opened,.object(["operation": .string("adoptionCandidates"), "applications": .array([app])]))
+        XCTAssertEqual(listed.page?.collection?.items.first?.icon,
+                       .app(bundleIdentifier: "org.mozilla.firefox", fallbackSymbol: "app.badge"))
         let preview = try row(listed,named:"Firefox")
         XCTAssertNil(preview.operation); XCTAssertEqual(try source(preview).input.value(atPointer:"/target"), .string("app_candidate"))
         let ready = try deliver(preview,.object(["succeeded": .bool(true), "target": .string("adoption_reviewed"), "name": .string("firefox"), "stdout": .string("Native preview")]))
@@ -338,6 +460,7 @@ final class HomebrewTests: XCTestCase {
         XCTAssertLessThan(try JSONEncoder().encode(listed.state).count,8192)
         let window = try render(event:.loadRange(page:"homebrew-list",collection:list.id,start:300,count:600),state:listed.state)
         XCTAssertEqual(window.page?.collection?.start,300); XCTAssertEqual(window.page?.collection?.items.count,600)
+        XCTAssertEqual(window.page?.collection?.items.first?.icon, .symbol("terminal"))
         XCTAssertNil(window.operation); XCTAssertTrue(window.page?.sources.isEmpty == true)
     }
     func testUnknownReadFailureIsNotAnEmptySuccessfulInventory() throws {
@@ -370,9 +493,9 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(back.operation)
     }
     func testSelectedPreviewKeepsTheExactKindAndNamesUntilAnotherConfirmGesture() throws {
-        let listed = try loaded("brew.outdated",packages:[package("one"),package("two"),package("one","cask")])
-        let narrowed = try row(listed,named:"two",action:"include")
-        let preview = try press(narrowed,"preview-formula")
+        let listed = try loaded("brew.outdated",packages:[package("one"),package("two"),package("app","cask")])
+        let selected = try row(row(listed,named:"one",action:"include"),named:"app",action:"include")
+        let preview = try press(selected,"preview-formula")
         XCTAssertNil(preview.operation)
         XCTAssertEqual(try source(preview).input.value(atPointer:"/names"),.array([.string("one")]))
         let ready = try deliver(preview,.object(["succeeded":.bool(true),"stdout":.string("Native planned change")]))
@@ -404,6 +527,7 @@ final class HomebrewTests: XCTestCase {
         let withPackages = try deliver(browse,.object(["taps":.array([.object(["name":.string("user/repo"),"packages":.array([package("user/repo/tool")])])])]))
         let ready = try deliver(withPackages,data("installed",[]))
         XCTAssertEqual(ready.page?.collection?.items.first?.accessory,"Install")
+        XCTAssertEqual(ready.page?.collection?.items.first?.icon, .symbol("terminal"))
         let detail = try row(ready,named:"user/repo/tool",action:"details")
         let rich = try deliver(detail,data("info",[package("user/repo/tool","formula",["version":.string("1")])]))
         let back = try press(rich,"back")
@@ -432,24 +556,22 @@ final class HomebrewTests: XCTestCase {
         let pinned = try loaded(packages:[package("wget","formula",["pinned":.bool(true),"installed_version":.string("1")])])
         let upgrades = try field(pinned,"section","outdated")
         let current = try deliver(upgrades,data("outdated",[package("wget","formula",["installed_version":.string("1"),"version":.string("2")])]))
-        XCTAssertTrue(current.page?.collection?.items.first?.marks.contains("included") == true)
-        let detail = try row(current,named:"wget",action:"details")
+        let selected = try row(current,named:"wget",action:"include")
+        XCTAssertTrue(selected.page?.collection?.items.first?.marks.contains("included") == true)
+        let detail = try row(selected,named:"wget",action:"details")
         let removedElsewhere = try deliver(detail,data("info",[package("wget","formula",["version":.string("2")])]))
         let reinstall = try press(removedElsewhere,"install")
         XCTAssertEqual(reinstall.operation?.input.value(atPointer:"/operation"),.string("install"))
     }
-    func testExcludedUpgradePrimarySelectsBeforeAnotherGestureCanUpgrade() throws {
-        for command in ["brew.outdated"] {
-            let listed = try loaded(command, packages: [package("wget"), package("pinned", "formula", ["pinned": .bool(true)])])
-            let excluded = try row(listed, named: "wget", action: "include")
-            XCTAssertEqual(excluded.page?.collection?.items.first(where: { $0.title == "wget" })?.accessory, "Select")
-            let selected = try row(excluded, named: "wget")
-            XCTAssertNil(selected.operation)
-            XCTAssertEqual(selected.page?.collection?.items.first(where: { $0.title == "wget" })?.marks, ["included"])
-            XCTAssertEqual(try row(selected, named: "wget").operation?.input.value(atPointer: "/operation"), .string("upgrade"))
-            XCTAssertEqual(listed.page?.collection?.items.first(where: { $0.title == "pinned" })?.accessory, "Unpin")
-            XCTAssertEqual(try row(listed, named: "pinned").operation?.input.value(atPointer: "/operation"), .string("unpin"))
-        }
+    func testUnselectedUpgradePrimarySelectsBeforeAnotherGestureCanUpgrade() throws {
+        let listed = try loaded("brew.outdated", packages: [package("wget"), package("pinned", "formula", ["pinned": .bool(true)])])
+        XCTAssertEqual(listed.page?.collection?.items.first(where: { $0.title == "wget" })?.accessory, "Select")
+        let selected = try row(listed, named: "wget")
+        XCTAssertNil(selected.operation)
+        XCTAssertEqual(selected.page?.collection?.items.first(where: { $0.title == "wget" })?.marks, ["included"])
+        XCTAssertEqual(try row(selected, named: "wget").operation?.input.value(atPointer: "/operation"), .string("upgrade"))
+        XCTAssertEqual(listed.page?.collection?.items.first(where: { $0.title == "pinned" })?.accessory, "Unpin")
+        XCTAssertEqual(try row(listed, named: "pinned").operation?.input.value(atPointer: "/operation"), .string("unpin"))
     }
     func testReturningToSearchCannotPresentThePreviousQueryUnderAnEmptyField() throws {
         let inventory = try deliver(open("brew.search"), data("installed", []))
@@ -499,16 +621,16 @@ final class HomebrewTests: XCTestCase {
         XCTAssertNil(failed.operation)
     }
 
-    func testLostSelectionGenerationCannotSilentlyUpgradePreviouslyExcludedPackages() throws {
+    func testLostSelectionGenerationCannotSilentlyUpgradePackages() throws {
         let listed = try loaded("brew.outdated", packages: [package("one"), package("two")])
-        let excluded = try row(listed, named: "two", action: "include")
-        try storage.setValue(.object(["generation": .string("another-view"), "data": .object(["excluded": .array([])])]), forKey: "homebrew.browser.v3.selection", of: try plugin().manifest.id)
-        let stale = try press(excluded, "upgrade-formula")
+        let selected = try row(listed, named: "one", action: "include")
+        try storage.setValue(.object(["generation": .string("another-view"), "data": .object(["included": .array([.string("formula:two")])])]), forKey: "homebrew.browser.v3.selection", of: try plugin().manifest.id)
+        let stale = try press(selected, "upgrade-formula")
         XCTAssertNil(stale.operation)
         XCTAssertNotNil(stale.page?.component("error"))
         let refreshed = try deliver(press(stale, "refresh"), data("outdated", [package("one"), package("two")]))
         XCTAssertNil(refreshed.page?.component("error"))
-        XCTAssertEqual(refreshed.page?.collection?.items.filter { $0.marks.contains("included") }.count, 2)
+        XCTAssertTrue(try XCTUnwrap(refreshed.page?.collection).items.allSatisfy { $0.marks.isEmpty })
         XCTAssertNil(refreshed.operation)
     }
 
@@ -580,9 +702,9 @@ final class HomebrewTests: XCTestCase {
     }
     func testCatalogFailureRequiresExplicitRetryOrDisclosedLocalRead() throws {
         for outcome in ["failed","stopped","unknown"] {
-            let failed = try completeCatalog(render("brew.outdated"),outcome:outcome)
+            let failed = try completeTask(render("brew.outdated"),outcome:outcome)
             XCTAssertEqual(failed.page?.id,"homebrew-task")
-            XCTAssertEqual(try text(failed,"task-output"),"Catalog fixture output")
+            XCTAssertEqual(try text(failed,"task-output"),"Task fixture output")
             XCTAssertTrue(failed.page?.sources.isEmpty == true)
             XCTAssertNil(failed.operation)
             let local = try press(failed,"local-catalog")
@@ -608,8 +730,9 @@ final class HomebrewTests: XCTestCase {
         let listed = try loaded("brew.outdated",packages:[package("wget")])
         XCTAssertNil(try field(listed,"query-outdated","wget").operation)
         XCTAssertNil(try field(listed,"kind","formula").operation)
-        XCTAssertNil(try row(listed,named:"wget",action:"include").operation)
-        let away = try field(listed,"section","list")
+        let selected = try row(listed,named:"wget",action:"include")
+        XCTAssertNil(selected.operation)
+        let away = try field(selected,"section","list")
         let entered = try render(event:.pageFieldChanged(page:"homebrew-list",field:"section",values:.object(["section":.string("outdated")])),state:away.state)
         XCTAssertEqual(entered.operation?.input.value(atPointer:"/operation"),.string("refreshCatalog"))
         let reopened = try render("brew.outdated",event:.called,state:listed.state)

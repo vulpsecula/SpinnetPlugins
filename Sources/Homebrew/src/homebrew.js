@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 (() => {
   const c = spinnet.ui.components, model = brewCatalog;
-  const e = event || {};
+  const e = event || {}, upgradeLimit = 50;
   const mode = model.sections.includes(entryMode) ? entryMode : "list";
   const s = Object.assign({screen:mode,section:mode,query:"",kind:"both",serial:0,instance:Date.now().toString(36) + Math.random().toString(36).slice(2),
     caches:{},read:null,queue:[],error:"",notice:"",detail:null,preview:null,origin:null,
     taskID:null,waiting:false,admitted:false,running:false,stopping:false,pendingTask:null,seen:[],output:"",truncated:false,
-    taskTitle:"",taskResult:null,returnTo:null,catalogRefresh:false,report:"doctor",tap:"",adoptionFilter:"available",rawReturn:null},state || {});
+    taskTitle:"",taskInput:null,taskResult:null,returnTo:null,catalogRefresh:false,report:"doctor",tap:"",adoptionFilter:"available",rawReturn:null},state || {});
   // Existing pinned views and task return routes use the surviving selection page.
   for (const field of ["screen","section"]) if (s[field] === "upgrade") s[field] = "outdated";
   if (s.returnTo && s.returnTo.section === "upgrade") s.returnTo = Object.assign({},s.returnTo,{section:"outdated"});
   const reset = [], cacheMemo = {};
-  let operation;
+  let operation, upgradeError;
   const busy = () => s.waiting || s.running;
   const pageID = () => "homebrew-" + s.screen;
   const collectionID = () => "objects-" + s.section;
@@ -87,7 +87,28 @@
   }
   function taskUnavailable() {
     s.waiting = false; s.running = false; s.stopping = false; s.pendingTask = null;
+    s.taskInput = null;
     s.taskResult = {outcome:"unknown",reason:"Final result unavailable; the task is no longer listed."};
+  }
+  function removeCachedPackages(slot,keys) {
+    const data = cached(slot);
+    if (!data || !data.packages) return;
+    const packages = data.packages.filter(item => !keys.has(model.key(item)));
+    if (packages.length !== data.packages.length) save(slot,Object.assign({},data,{packages}));
+  }
+  function applyCompletedPackageTask(task) {
+    if (!task || !["upgrade","upgradeSelected","uninstall"].includes(task.operation)) return;
+    const names = task.operation === "upgradeSelected" ? task.names : [task.name];
+    const keys = new Set(names.map(name => model.key({kind:task.kind,name})));
+    if (task.operation === "uninstall") removeCachedPackages("inventory",keys);
+    else {
+      removeCachedPackages("upgrades",keys);
+      const selection = cached("selection");
+      if (selection && selection.included) {
+        const included = selection.included.filter(key => !keys.has(key));
+        if (included.length !== selection.included.length) save("selection",{included});
+      }
+    }
   }
   function applyTask(task,withOutput = true) {
     const endedNow = busy() && task.status === "ended";
@@ -96,8 +117,12 @@
     if (withOutput) showOutput(typeof task.output === "string" ? task.output : (task.log || []).join("\n"),task.output_truncated);
     if (!s.running) {
       s.taskResult = task.result || {outcome:"unknown"};
-      if (endedNow && s.catalogRefresh && s.taskResult.outcome === "completed") finishCatalogRefresh(false);
-      else if (endedNow && !s.catalogRefresh) refresh(s.returnTo && s.returnTo.section || s.section);
+      if (endedNow) {
+        if (s.taskResult.outcome === "completed") applyCompletedPackageTask(s.taskInput);
+        s.taskInput = null;
+        if (s.catalogRefresh && s.taskResult.outcome === "completed") finishCatalogRefresh(false);
+        else if (!s.catalogRefresh) refresh(s.returnTo && s.returnTo.section || s.section);
+      }
     }
   }
   function selectedTask(activities) {
@@ -113,7 +138,7 @@
   function selected(item) {
     const selection = cached("selection");
     if (s.caches.selection && !selection) { s.error = "Upgrade selection is unavailable. Refresh and review the selection before retrying."; return false; }
-    return !item.pinned && !(selection && (selection.excluded || []).includes(model.key(item)));
+    return !item.pinned && (selection && selection.included || []).includes(model.key(item));
   }
   function details(item) {
     s.origin = {section:s.section,query:s.query,kind:s.kind,screen:s.screen === "tap-details" ? "tap-details" : s.section,tap:s.screen === "tap-details" && s.detail ? s.detail.tap : null};
@@ -132,7 +157,7 @@
     s.catalogRefresh = task.operation === "refreshCatalog";
     s.returnTo = s.origin || {section:s.section,query:s.query,kind:s.kind};
     s.read = null; s.queue = []; s.screen = "task";
-    s.taskTitle = title; s.taskResult = null; s.taskID = null; s.waiting = true; s.admitted = false; s.running = false; s.stopping = false; s.pendingTask = null;
+    s.taskTitle = title; s.taskInput = task; s.taskResult = null; s.taskID = null; s.waiting = true; s.admitted = false; s.running = false; s.stopping = false; s.pendingTask = null;
     s.seen = (spinnet.activities.list() || []).map(item => item.id);
     showOutput("",false);
     operation = spinnet.tools.startTask.operation(Object.assign({tool:"homebrew"},task),{id:"brew-task",notify:true});
@@ -148,8 +173,8 @@
     else if (action === "activate") {
       if ((s.section === "outdated") && item.pinned) packageTask("unpin",item);
       else if ((s.section === "outdated") && !selected(item)) {
-        const selection = cached("selection") || {excluded:[]};
-        save("selection",{excluded:(selection.excluded || []).filter(name => name !== model.key(item))});
+        const selection = cached("selection");
+        save("selection",{included:[...(selection && selection.included || []),model.key(item)]});
       }
       else { const primary = model.primary(item); if (primary === "details") details(item); else packageTask(primary,item); }
     } else if (action === "preview") previewPackage(item);
@@ -164,7 +189,7 @@
   }
   function previewSelection(kind) {
     const names = currentPackages().items.filter(item => item.kind === kind && selected(item)).map(item => item.name);
-    if (!names.length || names.length > 50) return;
+    if (!names.length || names.length > upgradeLimit) return;
     s.origin = {section:s.section,query:s.query,kind:s.kind}; s.screen = "preview";
     s.preview = {task:{operation:"upgradeSelected",kind,names},title:"Preview selected " + (kind === "cask" ? "Cask Apps" : "Formulae")};
     request([read({operation:"previewUpgrade",kind,names},"preview","preview")]);
@@ -247,7 +272,7 @@
   }
   if (e.type === "operation_finished" && e.operation === "brew-task" && s.waiting) {
     s.admitted = e.outcome === "succeeded"; s.waiting = s.admitted;
-    if (!s.admitted) { s.pendingTask = null; s.taskResult = {outcome:e.outcome,reason:e.reason || "Task did not start"}; }
+    if (!s.admitted) { s.pendingTask = null; s.taskInput = null; s.taskResult = {outcome:e.outcome,reason:e.reason || "Task did not start"}; }
     else if (s.pendingTask) applyTask(s.pendingTask,false);
   }
   if (e.type === "operation_finished" && e.operation === "stop" && e.outcome !== "succeeded") {
@@ -283,9 +308,9 @@
       const item = currentPackages().items.find(item => e.item && model.id(model.key(item)) === e.item.id);
       if (item) {
         if (e.action === "include" && (s.section === "outdated") && !item.pinned) {
-          const selection = cached("selection") || {excluded:[]}, excluded = new Set(selection.excluded || []), name = model.key(item);
-          if (excluded.has(name)) excluded.delete(name); else excluded.add(name);
-          save("selection",{excluded:[...excluded]});
+          const selection = cached("selection"), included = new Set(selection && selection.included || []), key = model.key(item);
+          if (included.has(key)) included.delete(key); else included.add(key);
+          save("selection",{included:[...included]});
         } else actOnPackage(e.action,item);
       }
     } else if (s.screen === "services") {
@@ -318,6 +343,7 @@
     }
   }
   if (e.type === "action_chosen") {
+    const upgradeAction = /^upgrade-(all-)?(formula|cask)$/.exec(e.action);
     if (e.action === "stop" && s.running && !s.stopping && s.taskID) {
       s.stopping = true;
       operation = spinnet.activities.stop.operation({id:s.taskID},{id:"stop",notify:true});
@@ -336,12 +362,13 @@
       else if (e.action === "update-catalog" && s.screen === "update") startTask({operation:"update"},"Update Homebrew and package catalogs");
       else if (e.action === "cleanup" && s.screen === "cleanup") startTask({operation:"cleanup",days:120},"Clean downloads older than 120 days");
       else if (e.action === "autoremove" && s.screen === "cleanup" && !s.read && autoremoveReady(cached("autoremove"))) startTask({operation:"autoremove"},"Remove unused dependencies");
-      else if (["upgrade-formula","upgrade-cask"].includes(e.action) && (s.screen === "outdated")) {
-        const kind = e.action === "upgrade-cask" ? "cask" : "formula";
-        const chosen = currentPackages().items.filter(item => item.kind === kind && selected(item));
-        if (chosen.length && chosen.length <= 50) startTask({operation:"upgradeSelected",kind,names:chosen.map(item => item.name)},"Upgrade " + chosen.length + " selected " + (kind === "cask" ? "apps" : "formulae"));
-        else s.error = "Select between 1 and 50 unpinned packages of one kind for this upgrade.";
-      } else if (["select-all","select-none"].includes(e.action) && (s.screen === "outdated")) save("selection",{excluded:e.action === "select-none" ? currentPackages().items.map(model.key) : []});
+      else if (upgradeAction && s.screen === "outdated") {
+        const [,all,kind] = upgradeAction;
+        const names = currentPackages().items.filter(item => item.kind === kind && (all ? !item.pinned : selected(item))).map(item => item.name);
+        const label = kind === "cask" ? "Cask Apps" : "Formulae";
+        if (names.length && names.length <= upgradeLimit) startTask({operation:"upgradeSelected",kind,names},"Upgrade " + (all ? "All " : names.length + " Selected ") + label);
+        else if (names.length > upgradeLimit) upgradeError = "Select up to " + upgradeLimit + " unpinned packages of one kind for this upgrade.";
+      } else if (["select-all","select-none"].includes(e.action) && (s.screen === "outdated")) save("selection",{included:e.action === "select-all" ? currentPackages().items.filter(item => !item.pinned).map(model.key) : []});
       else if (["preview-formula","preview-cask"].includes(e.action) && (s.screen === "outdated")) previewSelection(e.action === "preview-cask" ? "cask" : "formula");
       else if (e.action === "add-tap" && s.screen === "tap" && model.tapValid(s.tap)) startTask({operation:"tap",tap:s.tap},"Add " + s.tap);
       else if (s.screen === "details" && ["install","upgrade","uninstall","pin","unpin"].includes(e.action)) {
@@ -368,9 +395,18 @@
     const result = cached("adoption");
     const ignored = ignoredApps();
     if (!ignored) return [];
-    return (result && result.applications || []).flatMap(app => (app.candidates && app.candidates.length ? app.candidates : [{name:"",confidence:"cannot",reason:"No reviewed cask match."}]).map(candidate => ({id:model.id((app.identity || app.target) + ":" + candidate.name),identity:app.identity || app.target,ignored:ignored.has(app.identity || app.target),name:app.name,cask:candidate.name,target:app.target,version:app.version,confidence:candidate.confidence,reason:candidate.reason})));
+    return (result && result.applications || []).flatMap(app => (app.candidates && app.candidates.length ? app.candidates : [{name:"",confidence:"cannot",reason:"No reviewed cask match."}]).map(candidate => ({id:model.id((app.identity || app.target) + ":" + candidate.name),identity:app.identity || app.target,ignored:ignored.has(app.identity || app.target),name:app.name,cask:candidate.name,target:app.target,version:app.version,bundle_id:app.bundle_id,confidence:candidate.confidence,reason:candidate.reason})));
   }
   function buttons(id,values) { return c.actions({id,actions:values.map(([id,title]) => c.button({id,title}))}); }
+  function windowItems(rows, start, count) {
+    let window = rows.slice(start,start + count);
+    if (count > 200) {
+      window = window.map(({id,title,accessory,actions,marks,icon}) => ({id,title:title.slice(0,160),accessory,actions,marks,icon}));
+      // Leave room for the rest of the page within the 256 KiB budget.
+      if (model.byteLength(window) > 224 * 1024) window = window.map(({icon,...row}) => row);
+    }
+    return window.map(c.item);
+  }
   let clipped = false;
   function literal(id,text,title) {
     const raw = String(text || "");
@@ -396,17 +432,20 @@
       groups = model.grouped(items,item => model.group(item,s.screen)).map(group => Object.assign(group,{items:group.items.map(item => {
         const versions = item.installed_version && item.version && item.outdated ? item.installed_version + " → " + item.version : item.installed_version || item.version || "";
         const primary = model.primary(item);
-        return {id:model.id(model.key(item)),title:item.title || item.name,subtitle:[item.title && item.title !== item.name ? item.name : "",versions,item.description].filter(Boolean).join(" · ").slice(0,256),accessory:((s.section === "outdated") && item.pinned ? "Unpin" : (s.section === "outdated") && !selected(item) ? "Select" : item.pinned ? "Pinned" : primary === "details" ? item.isInstalled ? "Installed" : "Details" : primary === "install" ? "Install" : "Upgrade"),icon:{symbol:item.kind === "cask" ? "app" : "shippingbox"},actions:(s.screen === "outdated") ? ["activate","details",item.pinned ? "unpin" : "pin"].concat(item.pinned ? [] : ["include"]).concat(primary === "upgrade" ? ["preview"] : []) : model.actions(item),marks:(s.screen === "outdated") && selected(item) ? ["included"] : []};
+        return {id:model.id(model.key(item)),title:item.title || item.name,subtitle:[item.title && item.title !== item.name ? item.name : "",versions,item.description].filter(Boolean).join(" · ").slice(0,256),accessory:((s.section === "outdated") && item.pinned ? "Unpin" : (s.section === "outdated") && !selected(item) ? "Select" : item.pinned ? "Pinned" : primary === "details" ? item.isInstalled ? "Installed" : "Details" : primary === "install" ? "Install" : "Upgrade"),icon:model.packageIcon(item),actions:(s.screen === "outdated") ? ["activate","details",item.pinned ? "unpin" : "pin"].concat(item.pinned ? [] : ["include"]).concat(primary === "upgrade" ? ["preview"] : []) : model.actions(item),marks:(s.screen === "outdated") && selected(item) ? ["included"] : []};
       })}));
       actions = [c.itemAction({id:"activate",title:"Open",default:true}),c.itemAction({id:"details",title:"Show Details"})];
       if ((s.screen === "outdated")) {
         actions.push(c.itemAction({id:"include",title:"Include in Upgrade",toggle:"included"}));
-        const chosen = catalog.items.filter(selected), formulae = chosen.filter(item => item.kind === "formula"), casks = chosen.filter(item => item.kind === "cask");
-        const upgradeButtons = [["select-all","Select All"],["select-none","Deselect All"]];
-        if (formulae.length && formulae.length <= 50) upgradeButtons.push(["upgrade-formula","Upgrade " + formulae.length + " Formulae"],["preview-formula","Preview Formulae"]);
-        if (casks.length && casks.length <= 50) upgradeButtons.push(["upgrade-cask","Upgrade " + casks.length + " Cask Apps"],["preview-cask","Preview Cask Apps"]);
-        content.push(buttons("selection-controls",upgradeButtons));
-        content.push(c.text({id:"selection-help",text:"Pinned packages are excluded. Formulae and Cask Apps run as separate confirmed Tasks; each selection supports up to 50 packages.",style:{color:"secondary",fontSize:11}}));
+        const allButtons = [], selectedButtons = [];
+        for (const [kind,label] of [["formula","Formulae"],["cask","Cask Apps"]]) {
+          const eligible = catalog.items.filter(item => item.kind === kind && !item.pinned);
+          if (eligible.length) allButtons.push(["upgrade-all-" + kind,"Upgrade All " + label]);
+          const count = eligible.filter(selected).length;
+          if (count && count <= upgradeLimit) selectedButtons.push(["upgrade-" + kind,"Upgrade " + count + " Selected " + label],["preview-" + kind,"Preview Selected " + label]);
+        }
+        content.push(buttons("selection-controls",[...allButtons,...selectedButtons,["select-all","Select All"],["select-none","Deselect All"]]));
+        content.push(c.text({id:"selection-help",text:"Upgrade All includes unpinned packages from the loaded results across list filters. Each confirmed Task supports up to " + upgradeLimit + " packages.",style:{color:"secondary",fontSize:11}}));
       } else actions.push(c.itemAction({id:"uninstall",title:"Uninstall…"}));
       actions.push(c.itemAction({id:"pin",title:"Pin"}),c.itemAction({id:"unpin",title:"Unpin"}),c.itemAction({id:"preview",title:"Preview Changes"}));
       empty = s.read ? "Loading packages…" : s.screen === "search" && query.length < 2 ? "Type at least two characters to search." : !catalog.data ? "Package data is unavailable. Refresh to retry." : (s.screen === "outdated") ? "No available upgrades." : "No matching packages.";
@@ -426,7 +465,7 @@
       const data = cached("adoption"); limited = !!(data && data.truncated);
       const titles = {ready:"Ready to Adopt",likely:"Likely Adoptable",unlikely:"Unlikely Adoptions",cannot:"Cannot Adopt"};
       content.push(c.choiceField({id:"adoption-filter",title:"Apps",choices:["available","ignored"],choiceTitles:["Available","Ignored"],value:s.adoptionFilter}));
-      groups = model.grouped(adoptionRows().filter(item => item.ignored === (s.adoptionFilter === "ignored") && (item.name + " " + item.cask).toLowerCase().includes(query)),item => titles[item.confidence]).map(group => Object.assign(group,{items:group.items.map(item => ({id:item.id,title:item.name,subtitle:[item.cask,item.version,item.reason].filter(Boolean).join(" · ").slice(0,256),accessory:item.ignored ? "Restore" : item.confidence === "cannot" ? "Unavailable" : "Preview",actions:item.ignored ? ["activate","restore"] : item.confidence === "cannot" ? ["ignore"] : ["activate","ignore"],icon:{symbol:"app.badge"}}))}));
+      groups = model.grouped(adoptionRows().filter(item => item.ignored === (s.adoptionFilter === "ignored") && (item.name + " " + item.cask).toLowerCase().includes(query)),item => titles[item.confidence]).map(group => Object.assign(group,{items:group.items.map(item => ({id:item.id,title:item.name,subtitle:[item.cask,item.version,item.reason].filter(Boolean).join(" · ").slice(0,256),accessory:item.ignored ? "Restore" : item.confidence === "cannot" ? "Unavailable" : "Preview",actions:item.ignored ? ["activate","restore"] : item.confidence === "cannot" ? ["ignore"] : ["activate","ignore"],icon:model.appIcon(item.bundle_id,"app.badge")}))}));
       actions = [c.itemAction({id:"activate",title:"Open",default:true}),c.itemAction({id:"ignore",title:"Ignore App"}),c.itemAction({id:"restore",title:"Restore App"})];
       empty = s.read ? "Finding existing Apps…" : data ? "No matching adoptable Apps." : "App discovery is unavailable. Refresh to retry.";
     }
@@ -434,11 +473,8 @@
     const count = e.type === "load_range" ? Math.max(1,Math.min(600,e.count || 80)) : 80;
     content.push(c.text({id:"result-count",text:rows.length + " results" + (limited ? " · partial results" : ""),style:{color:"secondary",fontSize:11}}));
     const headers = groups.filter(group => group.items.length).map(group => c.section({id:group.id,title:group.title,count:group.items.length}));
-    // A 600-row window must still fit the 256 KiB page budget. Details remain
-    // available on demand while large windows omit decorative/secondary fields.
-    const window = rows.slice(start,start + count).map(row => c.item(count > 200 ? {id:row.id,title:row.title.slice(0,160),accessory:row.accessory,actions:row.actions,marks:row.marks} : row));
-    content.push(c.list({id:collectionID(),rows:10,total:rows.length,start,items:window,sections:headers.length ? headers : undefined,actions,emptyText:empty}));
-    if (limited) content.push(c.text({id:"partial",text:"This read reached a limit. Hidden packages are not included in a selected upgrade.",style:{color:"secondary"}}));
+    content.push(c.list({id:collectionID(),rows:10,total:rows.length,start,items:windowItems(rows,start,count),sections:headers.length ? headers : undefined,actions,emptyText:empty}));
+    if (limited) content.push(c.text({id:"partial",text:"This read reached a limit. Upgrades on this page only include packages returned by the read.",style:{color:"secondary"}}));
   } else if (s.screen === "details") {
     const item = detailItem();
     if (item) {
@@ -458,7 +494,8 @@
       const items = model.packages({operation:"search",packages:tap.packages || []},cached("inventory"));
       const start = e.type === "load_range" && e.collection === collectionID() ? Math.max(0,Math.min(items.length,e.start || 0)) : 0;
       const count = e.type === "load_range" ? Math.max(1,Math.min(600,e.count || 80)) : 80;
-      content.push(c.list({id:collectionID(),rows:10,total:items.length,start,items:items.slice(start,start + count).map(item => c.item({id:model.id(model.key(item)),title:item.name,accessory:model.primary(item) === "install" ? "Install" : item.isInstalled ? "Installed" : "Details",actions:model.actions(item)})),emptyText:"This tap has no listed packages.",actions:[c.itemAction({id:"activate",title:"Open",default:true}),c.itemAction({id:"details",title:"Show Details"}),c.itemAction({id:"uninstall",title:"Uninstall…"}),c.itemAction({id:"pin",title:"Pin"}),c.itemAction({id:"unpin",title:"Unpin"}),c.itemAction({id:"preview",title:"Preview Changes"})]}));
+      const rows = items.map(item => ({id:model.id(model.key(item)),title:item.name,accessory:model.primary(item) === "install" ? "Install" : item.isInstalled ? "Installed" : "Details",actions:model.actions(item),icon:model.packageIcon(item)}));
+      content.push(c.list({id:collectionID(),rows:10,total:rows.length,start,items:windowItems(rows,start,count),emptyText:"This tap has no listed packages.",actions:[c.itemAction({id:"activate",title:"Open",default:true}),c.itemAction({id:"details",title:"Show Details"}),c.itemAction({id:"uninstall",title:"Uninstall…"}),c.itemAction({id:"pin",title:"Pin"}),c.itemAction({id:"unpin",title:"Unpin"}),c.itemAction({id:"preview",title:"Preview Changes"})]}));
       if (tap.truncated) content.push(c.text({id:"partial-tap",text:"The tap package listing is partial."}));
     }
   } else if (s.screen === "preview") {
@@ -507,7 +544,7 @@
       if (ready) content.push(buttons("autoremove-actions",[["autoremove","Remove Unused Dependencies…"]]));
     }
   }
-  if (s.error) content.push(c.text({id:"error",text:model.text(s.error),style:{color:"red"}}));
+  if (upgradeError || s.error) content.push(c.text({id:"error",text:model.text(upgradeError || s.error),style:{color:"red"}}));
   if (clipped) content.push(c.text({id:"display-limit",text:"Showing the latest output; earlier text exceeded the display limit.",style:{color:"secondary"}}));
   if (s.read) { sources.push(spinnet.tools.read.source(s.read.id,s.read.input,{deliver:true})); content.push(buttons("cancel-controls",[["cancel-read","Cancel Read"]])); }
   if (busy()) sources.push(spinnet.activities.list.source("brew-activities",{every:1,deliver:true}));
