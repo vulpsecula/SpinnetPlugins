@@ -92,8 +92,8 @@ exact upstream notice alongside it; the repository's MIT licence cannot replace 
 `Plugins/KeepAwake.spinnetplugin` preserves the independently accepted Keep Awake
 1.0.3 package (`com.spinnet.coffee`), stable Plugin API Level 2, from the external
 Coffee proof's `4a7ab74` source (`18f26d7` records acceptance). Its MIT licence
-and Dzx copyright notice are copied unchanged. It contains no third-party data
-or assets. The accepted public-helper workflow tests move with the package.
+was copied unchanged; its copyright notice now names Vulpsecula Software. It
+contains no third-party data or assets. The accepted public-helper workflow tests move with the package.
 Original helper-budget measurements remain evidence of their original revision;
 onboarding does not claim a new physical sleep, lid, lock or VoiceOver check.
 
