@@ -88,7 +88,7 @@ final class SmartJumpTests: XCTestCase {
         let manifest = try SmartJumpFixture.load().manifest
         let disclosure = PluginPermissionDisclosure(manifest: manifest)
         let controls = disclosure.details(for: .controls)
-        XCTAssertTrue(controls.contains("Open http and https links in the default browser"), controls)
+        XCTAssertTrue(controls.contains("Open http and https links in a browser"), controls)
         XCTAssertTrue(controls.contains("Open Selected Link"), controls)
         let reads = disclosure.details(for: .reads)
         XCTAssertTrue(reads.contains("Selected text"), reads)
