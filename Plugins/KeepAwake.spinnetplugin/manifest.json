@@ -3,7 +3,7 @@
   "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.coffee",
   "name": "Keep Awake",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "capabilities": [
     "keep_awake",

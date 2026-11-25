@@ -3,7 +3,7 @@
   "engines": {"spinnet": "^1.0.0"},
   "id": "com.spinnet.builtin.copy-selected-text",
   "name": "Copy Selected Text",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "update_source": {"github": "vulpsecula/SpinnetPlugins"},
   "capabilities": [
     "read_selected_text",

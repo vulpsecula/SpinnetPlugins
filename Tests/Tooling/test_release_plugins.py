@@ -16,6 +16,9 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
+# The tests copy the real Cut package, so follow its released version.
+CUT_VERSION = json.loads((ROOT / "Plugins/Cut.spinnetplugin/manifest.json").read_text())["version"]
+CUT_TAG = f"com.spinnet.builtin.cut/v{CUT_VERSION}"
 REPOSITORY = "vulpsecula/SpinnetPlugins"
 
 # The Host's update_source rules (Spinnet PluginAPI/reference/update-source.md).
@@ -153,7 +156,7 @@ class ReleasePlans(DisposablePlugins):
     def test_versions_without_a_release_are_planned_with_their_tag_and_asset(self):
         plan = release.plan(self.plugins, FakeReleases(), REPOSITORY)
         self.assertEqual([(item.tag, item.asset, item.released) for item in plan], [
-            ("com.spinnet.builtin.cut/v1.0.0", "com.spinnet.builtin.cut.spinnetplugin.zip", False),
+            (CUT_TAG, "com.spinnet.builtin.cut.spinnetplugin.zip", False),
             ("com.spinnet.external.spotify/v1.2.0", "com.spinnet.external.spotify.spinnetplugin.zip", False),
         ])
         self.assertEqual(plan[1].archive, release.build_archive(self.spotify))
@@ -162,7 +165,7 @@ class ReleasePlans(DisposablePlugins):
         key, asset = self.published(self.spotify)
         plan = release.plan(self.plugins, FakeReleases({key: asset}), REPOSITORY)
         self.assertEqual({item.tag: item.released for item in plan}, {
-            "com.spinnet.builtin.cut/v1.0.0": False, "com.spinnet.external.spotify/v1.2.0": True,
+            CUT_TAG: False, "com.spinnet.external.spotify/v1.2.0": True,
         })
 
     def test_changed_contents_without_a_version_bump_are_refused(self):
@@ -267,7 +270,7 @@ def github_release(tag, assets=(), draft=False, prerelease=False):
 class BlockedReleases(DisposablePlugins):
     SPOTIFY = "com.spinnet.external.spotify/v1.2.0"
     SPOTIFY_ASSET = "com.spinnet.external.spotify.spinnetplugin.zip"
-    CUT = "com.spinnet.builtin.cut/v1.0.0"
+    CUT = CUT_TAG
 
     def test_a_draft_a_tag_without_a_release_and_a_missing_asset_each_block_only_their_plugin(self):
         cases = {
@@ -322,10 +325,10 @@ class Publishing(DisposablePlugins):
         release.publish(planned, publisher, "0123456789abcdef0123456789abcdef01234567", Path(self.temporary.name) / "dist")
         self.assertEqual(len(publisher.created), 1)
         created = publisher.created[0]
-        self.assertEqual(created["tag"], "com.spinnet.builtin.cut/v1.0.0")
+        self.assertEqual(created["tag"], CUT_TAG)
         self.assertEqual(created["asset"], "com.spinnet.builtin.cut.spinnetplugin.zip")
         self.assertEqual(created["bytes"], release.build_archive(self.plugins / "Cut.spinnetplugin"))
-        self.assertEqual(created["title"], "Cut 1.0.0")
+        self.assertEqual(created["title"], f"Cut {CUT_VERSION}")
         self.assertIn("com.spinnet.builtin.cut", created["notes"])
         self.assertEqual(created["target"], "0123456789abcdef0123456789abcdef01234567")
 
